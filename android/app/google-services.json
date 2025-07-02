@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "211367399364",
+    "project_id": "eging-map-app",
+    "storage_bucket": "eging-map-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:211367399364:android:0c2c6aee58933d42c95e91",
+        "android_client_info": {
+          "package_name": "com.example.egingapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJPIIu4BUSHQdKwA5IDg3HvRrxp0TO1s8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
