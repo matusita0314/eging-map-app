@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'login_page.dart';
+import 'app_scaffold.dart';
 
 void main() async {
   // main関数に「async」を追加
@@ -37,23 +38,8 @@ class MyApp extends StatelessWidget {
           // snapshotにデータ（ログイン済みのユーザー情報）があれば、
           // ログイン後の仮ページを表示
           if (snapshot.hasData) {
-            // ここがログイン後に表示されるページになります。
-            // 本来はマップページになりますが、今は仮のページを表示します。
-            return Scaffold(
-              appBar: AppBar(
-                title: const Text('ホームページ'),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.logout),
-                    onPressed: () async {
-                      await FirebaseAuth.instance.signOut();
-                    },
-                    tooltip: 'ログアウト',
-                  ),
-                ],
-              ),
-              body: const Center(child: Text('ログイン成功！')),
-            );
+            // ログイン後に表示されるページ
+            return const AppScaffold();
           }
           // snapshotにデータがなければ、LoginPageを表示
           return const LoginPage();
