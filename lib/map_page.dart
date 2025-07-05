@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'common_app_bar.dart';
+import 'dart:ui';
+import 'add_post_form.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -12,57 +14,43 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
-  // マップを操作するためのコントローラー
   final Completer<GoogleMapController> _controller = Completer();
-  // 現在地を保持するための変数（初期値は東京駅）
   static const LatLng _initialPosition = LatLng(35.681236, 139.767125);
-  // 現在地を更新するための変数
   LatLng? _currentPosition;
-  // ローディング状態を管理
   bool _isLoading = true;
+
+  // タップされた場所のマーカーを管理する変数
+  Marker? _tappedMarker;
 
   @override
   void initState() {
     super.initState();
-    // 画面が作成された時に、現在地を取得する処理を呼び出す
     _getCurrentLocation();
   }
 
-  // 現在地を取得するメソッド
   Future<void> _getCurrentLocation() async {
+    // ... （この中身は変更なし）
     try {
-      // 1. 位置情報サービスが有効かチェック
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        // エラー処理
         setState(() => _isLoading = false);
         return;
       }
-
-      // 2. 位置情報へのアクセス許可をチェック
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        // 許可をリクエスト
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          // エラー処理
           setState(() => _isLoading = false);
           return;
         }
       }
-
       if (permission == LocationPermission.deniedForever) {
-        // 永久に拒否されている場合のエラー処理
         setState(() => _isLoading = false);
         return;
       }
-
-      // 3. 現在地を取得
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-
-      // 4. 取得した位置情報をStateにセットし、画面を再描画
       setState(() {
         _currentPosition = LatLng(position.latitude, position.longitude);
         _isLoading = false;
@@ -75,16 +63,55 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  // マップがタップされたときに呼ばれるメソッド
+  void _onMapTapped(LatLng location) {
+    setState(() {
+      _tappedMarker = Marker(
+        markerId: const MarkerId('tapped_location'),
+        position: location,
+        // InfoWindowにonTapプロパティを追加
+        infoWindow: InfoWindow(
+          title: 'ここに釣果情報を投稿 +',
+          onTap: _showAddPostDialog, // 作成したメソッドを呼び出す
+        ),
+      );
+    });
+  }
+
+  void _showAddPostDialog() {
+    if (_tappedMarker == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('地図をタップして場所を選択してください。')));
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        // map_page.dartのshowDialogの中
+      return AlertDialog(
+        // タップされたマーカーの位置情報をlocationプロパティに渡す
+        content: AddPostForm(location: _tappedMarker!.position),
+        contentPadding: EdgeInsets.all(16.0),
+        backgroundColor: Colors.white,
+      );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 共通のAppBarを呼び出し
       appBar: CommonAppBar(title: 'マップ'),
-      // ローディング中か、データ取得後かで表示を切り替え
+      // フローティングアクションボタン（右下の＋ボタン）を追加
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.add),
+        onPressed: _showAddPostDialog,
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : GoogleMap(
-              // マップの初期表示位置（現在地が取れなかった場合は東京駅）
               initialCameraPosition: CameraPosition(
                 target: _currentPosition ?? _initialPosition,
                 zoom: 14.0,
@@ -94,8 +121,12 @@ class _MapPageState extends State<MapPage> {
                   _controller.complete(controller);
                 }
               },
-              myLocationEnabled: true, // 現在地レイヤー（青い点）を有効にする
-              myLocationButtonEnabled: true, // 現在地ボタンを有効にする
+              // タップされたときの処理を登録
+              onTap: _onMapTapped,
+              // 表示するマーカーのセット
+              markers: _tappedMarker == null ? {} : {_tappedMarker!},
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
             ),
     );
   }

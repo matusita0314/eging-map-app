@@ -39,6 +39,11 @@ dependencies:
   google_sign_in: ^7.1.0
   geolocator: ^14.0.2
   google_maps_flutter: ^2.12.3
+  image_picker: ^1.1.2
+  firebase_storage: ^12.4.9
+  cloud_firestore: ^5.6.11
+  image: ^4.5.4
+  file_picker: ^10.2.0
 
 dev_dependencies:
   flutter_test:

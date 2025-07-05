@@ -47,5 +47,7 @@
 	<true/>
 <key>NSLocationWhenInUseUsageDescription</key>
 <string>マップ機能で現在地を表示するために位置情報を使用します。</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>釣果の写真をアップロードするために、写真ライブラリへのアクセスが必要です。</string>
 </dict>
 </plist>
