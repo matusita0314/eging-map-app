@@ -84,6 +84,8 @@ class _AddPostFormState extends State<AddPostForm> {
       // 2. Firestoreに投稿データを保存
       await FirebaseFirestore.instance.collection('posts').add({
         'userId': user.uid,
+        'userName': user.displayName ?? '名無しさん',
+        'userPhotoUrl': user.photoURL ?? '',
         'squidSize': double.tryParse(_squidSizeController.text) ?? 0.0,
         'egiType': _egiTypeController.text,
         'imageUrl': imageUrl,

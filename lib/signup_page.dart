@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -15,13 +18,22 @@ class _SignupPageState extends State<SignupPage> {
 
   // 新規登録処理を実行するメソッド
   Future<void> _signUp() async {
-    // try-catchでエラー処理を実装
-    try {
-      // FirebaseAuthの機能を使って、ユーザーを新規作成
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
+  try {
+    final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email: _emailController.text,
+      password: _passwordController.text,
+    );
+
+      // ユーザー作成成功後、Firestoreにユーザー情報を保存
+    if (credential.user != null) {
+      await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({
+        'uid': credential.user!.uid,
+        'email': credential.user!.email,
+        'displayName': '名無しさん', // 初期の表示名
+        'photoUrl': '', // 初期のプロフィール画像URL（空）
+        'createdAt': Timestamp.now(),
+      });
+    }
 
       // 成功した場合、この画面が有効（mounted）であれば、前の画面に戻るなどの処理
       if (mounted) {

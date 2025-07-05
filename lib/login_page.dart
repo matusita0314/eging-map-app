@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'signup_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -41,22 +42,39 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _signInWithGoogle() async {
-  try {
-    final provider = GoogleAuthProvider();
-    await FirebaseAuth.instance.signInWithProvider(provider);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Googleサインインに成功しました。')),
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('エラー: $e')),
-      );
+    try {
+      // 1. Google認証のプロバイダを準備
+      final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+
+      // 2. ポップアップウィンドウを表示してサインインを実行し、結果を受け取る
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithPopup(googleProvider);
+
+      // 3. Firestoreにユーザー情報を保存（または更新）
+      if (userCredential.user != null) {
+        final user = userCredential.user!;
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'uid': user.uid,
+          'email': user.email,
+          'displayName': user.displayName ?? '名無しさん',
+          'photoUrl': user.photoURL ?? '',
+          'lastSignInAt': Timestamp.now(),
+        }, SetOptions(merge: true)); // merge:trueで既存のデータを安全に更新
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Googleサインインに成功しました。')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('エラーが発生しました: $e')));
+      }
     }
   }
-}
 
   // ウィジェットが不要になった際に、コントローラーを破棄する
   @override
