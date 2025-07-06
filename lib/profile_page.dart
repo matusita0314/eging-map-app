@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'common_app_bar.dart';
 import 'post_model.dart';
 import 'post_detail_sheet.dart';
+import 'edit_profile_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -88,7 +89,30 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // TODO: ここに「プロフィールを編集」ボタンを後で追加
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayName,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // ▼▼▼ このボタンを追加 ▼▼▼
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const EditProfilePage(),
+                            ),
+                          );
+                        },
+                        child: const Text('プロフィールを編集'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ],
