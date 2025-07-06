@@ -2,31 +2,92 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'common_app_bar.dart';
-import 'post_model.dart';
 import 'post_detail_sheet.dart';
-import 'edit_profile_page.dart';
+import 'post_model.dart';
+import 'edit_profile_page.dart'; // プロフィール編集ページをインポート
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  final String userId;
+  const ProfilePage({super.key, required this.userId});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  // 現在ログインしているユーザー情報を取得
-  final user = FirebaseAuth.instance.currentUser!;
+  final _currentUser = FirebaseAuth.instance.currentUser!;
 
-  // _ProfilePageStateクラスの中に追加
-  void _showPostDetailSheet(Post post) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true, // シートの高さをコンテンツに合わせる
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return PostDetailSheet(post: post);
-      },
-    );
+  // フォローしているかどうかを管理する状態変数
+  bool _isFollowing = false;
+  // フォロー状態をチェック中かどうか
+  bool _isLoadingFollowStatus = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // 画面が表示された時に、フォロー状態をチェックする
+    _checkIfFollowing();
+  }
+
+  // フォロー状態をチェックするメソッド
+  Future<void> _checkIfFollowing() async {
+    // 自分自身のプロフィールの場合はチェック不要
+    if (widget.userId == _currentUser.uid) {
+      setState(() => _isLoadingFollowStatus = false);
+      return;
+    }
+    setState(() => _isLoadingFollowStatus = true);
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_currentUser.uid)
+        .collection('following')
+        .doc(widget.userId)
+        .get();
+
+    if (mounted) {
+      setState(() {
+        _isFollowing = doc.exists;
+        _isLoadingFollowStatus = false;
+      });
+    }
+  }
+
+  // フォロー/アンフォローを処理するメソッド
+  Future<void> _handleFollow() async {
+    // WriteBatchを使って、複数の書き込みを一度に（アトミックに）実行
+    final batch = FirebaseFirestore.instance.batch();
+
+    // 自分のfollowingコレクションへの参照
+    final myFollowingRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(_currentUser.uid)
+        .collection('following')
+        .doc(widget.userId);
+
+    // 相手のfollowersコレクションへの参照
+    final theirFollowersRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.userId)
+        .collection('followers')
+        .doc(_currentUser.uid);
+
+    if (_isFollowing) {
+      // アンフォローの場合：ドキュメントを削除
+      batch.delete(myFollowingRef);
+      batch.delete(theirFollowersRef);
+    } else {
+      // フォローの場合：ドキュメントを作成
+      batch.set(myFollowingRef, {'followedAt': Timestamp.now()});
+      batch.set(theirFollowersRef, {'followerAt': Timestamp.now()});
+    }
+
+    // バッチ処理を実行
+    await batch.commit();
+
+    // 画面上のフォロー状態を更新
+    setState(() {
+      _isFollowing = !_isFollowing;
+    });
   }
 
   @override
@@ -36,10 +97,8 @@ class _ProfilePageState extends State<ProfilePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- ユーザー情報表示エリア ---
             _buildProfileHeader(),
             const Divider(),
-            // --- 投稿一覧表示エリア ---
             _buildUserPostsGrid(),
           ],
         ),
@@ -47,22 +106,23 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ユーザーのヘッダー情報（アイコン、名前など）を構築するウィジェット
   Widget _buildProfileHeader() {
-    // usersコレクションからリアルタイムでユーザー情報を取得
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('users')
-          .doc(user.uid)
+          .doc(widget.userId)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
-        // 取得したデータがない場合（新規登録直後など）も考慮
         final userData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
         final photoUrl = userData['photoUrl'] as String? ?? '';
         final displayName = userData['displayName'] as String? ?? '名無しさん';
+        final isCurrentUser = _currentUser.uid == widget.userId;
 
         return Padding(
           padding: const EdgeInsets.all(16.0),
@@ -78,29 +138,20 @@ class _ProfilePageState extends State<ProfilePage> {
                     : null,
               ),
               const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    displayName,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        displayName,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(height: 8),
-                      // ▼▼▼ このボタンを追加 ▼▼▼
+                    ),
+                    const SizedBox(height: 8),
+                    // --- ボタンの表示ロジック ---
+                    if (isCurrentUser)
                       ElevatedButton(
                         onPressed: () {
                           Navigator.of(context).push(
@@ -110,10 +161,28 @@ class _ProfilePageState extends State<ProfilePage> {
                           );
                         },
                         child: const Text('プロフィールを編集'),
+                      )
+                    else if (_isLoadingFollowStatus)
+                      const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2.0),
+                      )
+                    else
+                      ElevatedButton(
+                        onPressed: _handleFollow,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isFollowing
+                              ? Colors.grey[300]
+                              : Theme.of(context).primaryColor,
+                          foregroundColor: _isFollowing
+                              ? Colors.black
+                              : Colors.white,
+                        ),
+                        child: Text(_isFollowing ? 'フォロー中' : 'フォローする'),
                       ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -122,13 +191,11 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ユーザーの投稿一覧をグリッド形式で構築するウィジェット
   Widget _buildUserPostsGrid() {
     return StreamBuilder<QuerySnapshot>(
-      // postsコレクションから、現在のユーザーの投稿のみを新しい順で取得
       stream: FirebaseFirestore.instance
           .collection('posts')
-          .where('userId', isEqualTo: user.uid)
+          .where('userId', isEqualTo: widget.userId)
           .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
@@ -145,41 +212,33 @@ class _ProfilePageState extends State<ProfilePage> {
           );
         }
 
-        // GridView.builderで投稿画像をグリッド表示
         return GridView.builder(
-          // GridViewをスクロール可能にし、親のSingleChildScrollViewと競合しないようにする
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3, // 1行に3つの画像
+            crossAxisCount: 3,
             crossAxisSpacing: 2,
             mainAxisSpacing: 2,
           ),
           itemCount: snapshot.data!.docs.length,
-          // _buildUserPostsGridメソッドの中
           itemBuilder: (context, index) {
             final post = Post.fromFirestore(snapshot.data!.docs[index]);
-            // GestureDetectorで画像をラップして、タップ可能にする
             return GestureDetector(
-              onTap: () {
-                // タップされた投稿のデータを渡して、詳細シートを表示
-                _showPostDetailSheet(post);
-              },
-              child: Image.network(
-                post.imageUrl,
-                fit: BoxFit.cover,
-                // 画像読み込み中の表示
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2.0),
-                  );
-                },
-              ),
+              onTap: () => _showPostDetailSheet(post),
+              child: Image.network(post.imageUrl, fit: BoxFit.cover),
             );
           },
         );
       },
+    );
+  }
+
+  void _showPostDetailSheet(Post post) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => PostDetailSheet(post: post),
     );
   }
 }

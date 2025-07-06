@@ -9,6 +9,9 @@ class Post {
   final String imageUrl;
   final LatLng location;
   final DateTime createdAt;
+  // ▼▼▼ この2つのプロパティを追加 ▼▼▼
+  final String userName;
+  final String userPhotoUrl;
 
   Post({
     required this.id,
@@ -18,9 +21,12 @@ class Post {
     required this.imageUrl,
     required this.location,
     required this.createdAt,
+    // ▼▼▼ コンストラクタにも追加 ▼▼▼
+    required this.userName,
+    required this.userPhotoUrl,
   });
 
-  // FirestoreのデータからPostオブジェクトを生成する変換機能
+  // FirestoreのデータからPostオブジェクトを生成する変換機能を修正
   factory Post.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     GeoPoint point = data['location'] ?? const GeoPoint(0, 0);
@@ -34,6 +40,9 @@ class Post {
       imageUrl: data['imageUrl'] ?? '',
       location: LatLng(point.latitude, point.longitude),
       createdAt: timestamp.toDate(),
+      // ▼▼▼ Firestoreのデータから新しいプロパティを読み込む処理を追加 ▼▼▼
+      userName: data['userName'] ?? '名無しさん',
+      userPhotoUrl: data['userPhotoUrl'] ?? '',
     );
   }
 }
