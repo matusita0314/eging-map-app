@@ -6,15 +6,15 @@ import 'post_detail_sheet.dart';
 import 'post_model.dart';
 import 'edit_profile_page.dart'; // プロフィール編集ページをインポート
 
-class ProfilePage extends StatefulWidget {
+class MyPage extends StatefulWidget {
   final String userId;
-  const ProfilePage({super.key, required this.userId});
+  const MyPage({super.key, required this.userId});
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  State<MyPage> createState() => _MyPageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _MyPageState extends State<MyPage> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
 
   // フォローしているかどうかを管理する状態変数
