@@ -9,9 +9,9 @@ class Post {
   final String imageUrl;
   final LatLng location;
   final DateTime createdAt;
-  // ▼▼▼ この2つのプロパティを追加 ▼▼▼
   final String userName;
   final String userPhotoUrl;
+  final int likeCount;
 
   Post({
     required this.id,
@@ -24,6 +24,7 @@ class Post {
     // ▼▼▼ コンストラクタにも追加 ▼▼▼
     required this.userName,
     required this.userPhotoUrl,
+    required this.likeCount,
   });
 
   // FirestoreのデータからPostオブジェクトを生成する変換機能を修正
@@ -43,6 +44,7 @@ class Post {
       // ▼▼▼ Firestoreのデータから新しいプロパティを読み込む処理を追加 ▼▼▼
       userName: data['userName'] ?? '名無しさん',
       userPhotoUrl: data['userPhotoUrl'] ?? '',
+      likeCount: data['likeCount'] ?? 0,
     );
   }
 }

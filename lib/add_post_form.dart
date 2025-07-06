@@ -94,6 +94,7 @@ class _AddPostFormState extends State<AddPostForm> {
           widget.location.longitude,
         ),
         'createdAt': Timestamp.now(),
+        'likeCount': 0,
       });
 
       if (mounted) {

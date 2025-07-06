@@ -221,11 +221,56 @@ class _ProfilePageState extends State<ProfilePage> {
             mainAxisSpacing: 2,
           ),
           itemCount: snapshot.data!.docs.length,
+
+          // _buildUserPostsGridメソッドの中のitemBuilderを修正
           itemBuilder: (context, index) {
             final post = Post.fromFirestore(snapshot.data!.docs[index]);
             return GestureDetector(
               onTap: () => _showPostDetailSheet(post),
-              child: Image.network(post.imageUrl, fit: BoxFit.cover),
+              // Stackを使って、画像の上にいいね数を重ねる
+              child: Stack(
+                alignment: Alignment.bottomRight, // 重ねるウィジェットを右下に配置
+                children: [
+                  // 背景の画像
+                  Image.network(
+                    post.imageUrl,
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                  // いいね数表示の背景
+                  Container(
+                    margin: const EdgeInsets.all(4.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6.0,
+                      vertical: 2.0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5), // 半透明の黒
+                      borderRadius: BorderRadius.circular(10.0),
+                    ),
+                    // いいねアイコンと数
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min, // コンテンツのサイズに合わせる
+                      children: [
+                        const Icon(
+                          Icons.favorite,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${post.likeCount}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         );

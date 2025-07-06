@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'common_app_bar.dart';
 import 'post_model.dart'; // Postモデルをインポート
 import 'profile_page.dart'; // ProfilePageをインポート
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -53,10 +54,76 @@ class HomePage extends StatelessWidget {
 }
 
 // 投稿一つ分を表示するための、プライベートなカードウィジェット
-class _PostCard extends StatelessWidget {
+class _PostCard extends StatefulWidget {
   final Post post;
 
   const _PostCard({required this.post});
+
+  @override
+  State<_PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<_PostCard> {
+  // いいねの状態を管理する変数
+  bool _isLiked = false;
+  // いいねの数を管理する変数
+  int _likeCount = 0;
+  // 現在のユーザー情報
+  final _currentUser = FirebaseAuth.instance.currentUser!;
+
+  @override
+  void initState() {
+    super.initState();
+    // 初期状態として、投稿のいいね数をセット
+    _likeCount = widget.post.likeCount;
+    // 自分が既にいいねしているかチェック
+    _checkIfLiked();
+  }
+
+  // 自分が既にいいねしているかチェックするメソッド
+  Future<void> _checkIfLiked() async {
+    final doc = await FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.post.id)
+        .collection('likes')
+        .doc(_currentUser.uid)
+        .get();
+    if (mounted && doc.exists) {
+      setState(() {
+        _isLiked = true;
+      });
+    }
+  }
+
+  // いいね処理を実行するメソッド
+  Future<void> _handleLike() async {
+    // 状態を先に画面に反映させる（UIの応答性を良くするため）
+    setState(() {
+      if (_isLiked) {
+        _likeCount--;
+        _isLiked = false;
+      } else {
+        _likeCount++;
+        _isLiked = true;
+      }
+    });
+
+    // Firestoreの更新処理
+    final postRef = FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.post.id);
+    final likeRef = postRef.collection('likes').doc(_currentUser.uid);
+
+    if (_isLiked) {
+      // いいねする場合
+      await likeRef.set({'likedAt': Timestamp.now()});
+      await postRef.update({'likeCount': FieldValue.increment(1)});
+    } else {
+      // いいねを取り消す場合
+      await likeRef.delete();
+      await postRef.update({'likeCount': FieldValue.increment(-1)});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +139,8 @@ class _PostCard extends StatelessWidget {
               // タップされたら、その投稿のユーザーIDを渡してプロフィール画面に移動
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => ProfilePage(userId: post.userId),
+                  // ▼▼▼ ここを修正 ▼▼▼
+                  builder: (context) => ProfilePage(userId: widget.post.userId),
                 ),
               );
             },
@@ -81,17 +149,19 @@ class _PostCard extends StatelessWidget {
               child: Row(
                 children: [
                   CircleAvatar(
-                    // ユーザーのプロフィール画像があれば表示、なければデフォルトアイコン
-                    backgroundImage: post.userPhotoUrl.isNotEmpty
-                        ? NetworkImage(post.userPhotoUrl)
+                    // ▼▼▼ ここを修正 ▼▼▼
+                    backgroundImage: widget.post.userPhotoUrl.isNotEmpty
+                        ? NetworkImage(widget.post.userPhotoUrl)
                         : null,
-                    child: post.userPhotoUrl.isEmpty
+                    // ▼▼▼ ここを修正 ▼▼▼
+                    child: widget.post.userPhotoUrl.isEmpty
                         ? const Icon(Icons.person)
                         : null,
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    post.userName,
+                    // ▼▼▼ ここを修正 ▼▼▼
+                    widget.post.userName,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -100,30 +170,53 @@ class _PostCard extends StatelessWidget {
           ),
           // 投稿画像
           Image.network(
-            post.imageUrl,
+            // ▼▼▼ ここを修正 ▼▼▼
+            widget.post.imageUrl,
             width: double.infinity,
             height: 300,
             fit: BoxFit.cover,
           ),
-          // 釣果情報
+          // 釣果情報といいねボタン
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ▼▼▼ ここを修正 ▼▼▼
                 Text(
-                  '${post.squidSize} cm',
+                  '${widget.post.squidSize} cm',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('ヒットエギ: ${post.egiType}'),
+                // ▼▼▼ ここを修正 ▼▼▼
+                Text('ヒットエギ: ${widget.post.egiType}'),
                 const SizedBox(height: 8),
-                Text(
-                  DateFormat('yyyy/MM/dd HH:mm').format(post.createdAt),
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      // ▼▼▼ ここを修正 ▼▼▼
+                      DateFormat(
+                        'yyyy/MM/dd HH:mm',
+                      ).format(widget.post.createdAt),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            _isLiked ? Icons.favorite : Icons.favorite_border,
+                            color: _isLiked ? Colors.red : Colors.grey,
+                          ),
+                          onPressed: _handleLike,
+                        ),
+                        Text('$_likeCount'),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
