@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_page.dart';
 import 'map_page.dart';
-import 'settings_page.dart';
+import 'profile_page.dart';
 
 class AppScaffold extends StatefulWidget {
   const AppScaffold({super.key});
@@ -18,7 +18,7 @@ class _AppScaffoldState extends State<AppScaffold> {
   static const List<Widget> _pages = <Widget>[
     HomePage(),
     MapPage(),
-    SettingsPage(),
+    ProfilePage(),
   ];
 
   // タブがタップされたときに呼ばれるメソッド
@@ -46,8 +46,8 @@ class _AppScaffoldState extends State<AppScaffold> {
             label: 'マップ',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: '設定',
+            icon: Icon(Icons.person),
+            label: 'プロファイル',
           ),
         ],
         currentIndex: _selectedIndex, // 現在選択されているタブ
