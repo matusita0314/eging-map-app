@@ -95,6 +95,7 @@ class _AddPostFormState extends State<AddPostForm> {
         ),
         'createdAt': Timestamp.now(),
         'likeCount': 0,
+        'commentCount': 0,
       });
 
       if (mounted) {

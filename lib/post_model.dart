@@ -12,6 +12,7 @@ class Post {
   final String userName;
   final String userPhotoUrl;
   final int likeCount;
+  final int commentCount;
 
   Post({
     required this.id,
@@ -21,10 +22,10 @@ class Post {
     required this.imageUrl,
     required this.location,
     required this.createdAt,
-    // ▼▼▼ コンストラクタにも追加 ▼▼▼
     required this.userName,
     required this.userPhotoUrl,
     required this.likeCount,
+    required this.commentCount,
   });
 
   // FirestoreのデータからPostオブジェクトを生成する変換機能を修正
@@ -36,15 +37,15 @@ class Post {
     return Post(
       id: doc.id,
       userId: data['userId'] ?? '',
+      userName: data['userName'] ?? '名無しさん',
+      userPhotoUrl: data['userPhotoUrl'] ?? '',
       squidSize: (data['squidSize'] ?? 0).toDouble(),
       egiType: data['egiType'] ?? '',
       imageUrl: data['imageUrl'] ?? '',
       location: LatLng(point.latitude, point.longitude),
       createdAt: timestamp.toDate(),
-      // ▼▼▼ Firestoreのデータから新しいプロパティを読み込む処理を追加 ▼▼▼
-      userName: data['userName'] ?? '名無しさん',
-      userPhotoUrl: data['userPhotoUrl'] ?? '',
       likeCount: data['likeCount'] ?? 0,
+      commentCount: data['commentCount'] ?? 0,
     );
   }
 }

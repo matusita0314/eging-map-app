@@ -5,6 +5,7 @@ import 'common_app_bar.dart';
 import 'post_model.dart'; // Postモデルをインポート
 import 'profile_page.dart'; // ProfilePageをインポート
 import 'package:firebase_auth/firebase_auth.dart';
+import 'comment_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -198,7 +199,6 @@ class _PostCardState extends State<_PostCard> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      // ▼▼▼ ここを修正 ▼▼▼
                       DateFormat(
                         'yyyy/MM/dd HH:mm',
                       ).format(widget.post.createdAt),
@@ -206,6 +206,7 @@ class _PostCardState extends State<_PostCard> {
                     ),
                     Row(
                       children: [
+                        // いいねボタン
                         IconButton(
                           icon: Icon(
                             _isLiked ? Icons.favorite : Icons.favorite_border,
@@ -214,6 +215,24 @@ class _PostCardState extends State<_PostCard> {
                           onPressed: _handleLike,
                         ),
                         Text('$_likeCount'),
+
+                        const SizedBox(width: 8),
+                        // コメントボタン
+                        IconButton(
+                          icon: const Icon(
+                            Icons.chat_bubble_outline,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    CommentPage(post: widget.post),
+                              ),
+                            );
+                          },
+                        ),
+                        Text('${widget.post.commentCount}'),
                       ],
                     ),
                   ],
