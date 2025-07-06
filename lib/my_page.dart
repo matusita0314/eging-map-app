@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'common_app_bar.dart';
+import 'package:intl/intl.dart';
 import 'post_detail_sheet.dart';
 import 'post_model.dart';
-import 'edit_profile_page.dart'; // プロフィール編集ページをインポート
+import 'edit_profile_page.dart';
+import 'comment_page.dart';
 
 class MyPage extends StatefulWidget {
   final String userId;
@@ -17,88 +18,27 @@ class MyPage extends StatefulWidget {
 class _MyPageState extends State<MyPage> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
 
-  // フォローしているかどうかを管理する状態変数
-  bool _isFollowing = false;
-  // フォロー状態をチェック中かどうか
-  bool _isLoadingFollowStatus = true;
-
-  @override
-  void initState() {
-    super.initState();
-    // 画面が表示された時に、フォロー状態をチェックする
-    _checkIfFollowing();
-  }
-
-  // フォロー状態をチェックするメソッド
-  Future<void> _checkIfFollowing() async {
-    // 自分自身のプロフィールの場合はチェック不要
-    if (widget.userId == _currentUser.uid) {
-      setState(() => _isLoadingFollowStatus = false);
-      return;
-    }
-    setState(() => _isLoadingFollowStatus = true);
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('following')
-        .doc(widget.userId)
-        .get();
-
-    if (mounted) {
-      setState(() {
-        _isFollowing = doc.exists;
-        _isLoadingFollowStatus = false;
-      });
-    }
-  }
-
-  // フォロー/アンフォローを処理するメソッド
-  Future<void> _handleFollow() async {
-    // WriteBatchを使って、複数の書き込みを一度に（アトミックに）実行
-    final batch = FirebaseFirestore.instance.batch();
-
-    // 自分のfollowingコレクションへの参照
-    final myFollowingRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('following')
-        .doc(widget.userId);
-
-    // 相手のfollowersコレクションへの参照
-    final theirFollowersRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .collection('followers')
-        .doc(_currentUser.uid);
-
-    if (_isFollowing) {
-      // アンフォローの場合：ドキュメントを削除
-      batch.delete(myFollowingRef);
-      batch.delete(theirFollowersRef);
-    } else {
-      // フォローの場合：ドキュメントを作成
-      batch.set(myFollowingRef, {'followedAt': Timestamp.now()});
-      batch.set(theirFollowersRef, {'followerAt': Timestamp.now()});
-    }
-
-    // バッチ処理を実行
-    await batch.commit();
-
-    // 画面上のフォロー状態を更新
-    setState(() {
-      _isFollowing = !_isFollowing;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CommonAppBar(title: 'プロフィール'),
       body: SingleChildScrollView(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildProfileHeader(),
+            const SizedBox(height: 24),
+            _buildStatsSection(),
+            const SizedBox(height: 16),
             const Divider(),
+            _buildBadgeSection(),
+            const Divider(),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'これまでの投稿',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
             _buildUserPostsGrid(),
           ],
         ),
@@ -114,76 +54,78 @@ class _MyPageState extends State<MyPage> {
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
+          return const SizedBox(
+            height: 250,
             child: Center(child: CircularProgressIndicator()),
           );
         }
         final userData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
         final photoUrl = userData['photoUrl'] as String? ?? '';
         final displayName = userData['displayName'] as String? ?? '名無しさん';
+        final introduction =
+            userData['introduction'] as String? ?? '自己紹介がありません';
         final isCurrentUser = _currentUser.uid == widget.userId;
 
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 24, 16, 24),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Theme.of(context).primaryColor.withOpacity(0.1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundImage: photoUrl.isNotEmpty
-                    ? NetworkImage(photoUrl)
-                    : null,
-                child: photoUrl.isEmpty
-                    ? const Icon(Icons.person, size: 40)
-                    : null,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundImage: photoUrl.isNotEmpty
+                        ? NetworkImage(photoUrl)
+                        : null,
+                    child: photoUrl.isEmpty
+                        ? const Icon(Icons.person, size: 40)
+                        : null,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
                       displayName,
                       style: const TextStyle(
-                        fontSize: 20,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    // --- ボタンの表示ロジック ---
-                    if (isCurrentUser)
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const EditProfilePage(),
-                            ),
-                          );
-                        },
-                        child: const Text('プロフィールを編集'),
-                      )
-                    else if (_isLoadingFollowStatus)
-                      const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2.0),
-                      )
-                    else
-                      ElevatedButton(
-                        onPressed: _handleFollow,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isFollowing
-                              ? Colors.grey[300]
-                              : Theme.of(context).primaryColor,
-                          foregroundColor: _isFollowing
-                              ? Colors.black
-                              : Colors.white,
+                  ),
+                  if (isCurrentUser)
+                    Row(
+                      children: [
+                        // プロフィール編集ボタン
+                        IconButton(
+                          icon: const Icon(Icons.edit_note),
+                          tooltip: 'プロフィールを編集',
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const EditProfilePage(),
+                              ),
+                            );
+                          },
                         ),
-                        child: Text(_isFollowing ? 'フォロー中' : 'フォローする'),
-                      ),
-                  ],
-                ),
+                        // 設定ボタン（今回はダミー）
+                        IconButton(
+                          icon: const Icon(Icons.settings_outlined),
+                          tooltip: '設定',
+                          onPressed: () {
+                            // TODO: 設定画面への遷移を実装
+                          },
+                        ),
+                      ],
+                    ),
+                ],
               ),
+              const SizedBox(height: 16),
+              // 自己紹介文
+              Text(introduction, style: const TextStyle(fontSize: 16)),
             ],
           ),
         );
@@ -191,6 +133,71 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
+  Widget _buildStatsSection() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildStatItem(
+          '釣果数',
+          FirebaseFirestore.instance
+              .collection('posts')
+              .where('userId', isEqualTo: widget.userId),
+        ),
+        _buildStatItem(
+          'フォロワー',
+          FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.userId)
+              .collection('followers'),
+        ),
+        _buildStatItem(
+          'フォロー中',
+          FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.userId)
+              .collection('following'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatItem(String label, Query query) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: query.snapshots(),
+      builder: (context, snapshot) {
+        final count = snapshot.data?.docs.length ?? 0;
+        return Column(
+          children: [
+            Text(
+              '$count',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(color: Colors.grey)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBadgeSection() {
+    return const Padding(
+      padding: EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'バッジ',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Center(child: Text('取得したバッジはありません')),
+        ],
+      ),
+    );
+  }
+
+  // ユーザーの投稿一覧をグリッド形式で構築するウィジェット
   Widget _buildUserPostsGrid() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -202,88 +209,85 @@ class _MyPageState extends State<MyPage> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (snapshot.hasError) {
-          return Center(child: Text('エラー: ${snapshot.error}'));
-        }
         if (snapshot.data!.docs.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(24.0),
-            child: Center(child: Text('まだ投稿がありません。')),
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Text('まだ投稿がありません。'),
+            ),
           );
         }
-
+        // GridView.builderに変更
         return GridView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 2,
-            mainAxisSpacing: 2,
+            crossAxisCount: 2, // 2列表示
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 0.7, // カードの縦横比を調整
           ),
           itemCount: snapshot.data!.docs.length,
-
-          // _buildUserPostsGridメソッドの中のitemBuilderを修正
           itemBuilder: (context, index) {
             final post = Post.fromFirestore(snapshot.data!.docs[index]);
-            return GestureDetector(
-              onTap: () => _showPostDetailSheet(post),
-              // Stackを使って、画像の上にいいね数を重ねる
-              child: Stack(
-                alignment: Alignment.bottomRight, // 重ねるウィジェットを右下に配置
-                children: [
-                  // 背景の画像
-                  Image.network(
-                    post.imageUrl,
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                  // いいね数表示の背景
-                  Container(
-                    margin: const EdgeInsets.all(4.0),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6.0,
-                      vertical: 2.0,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5), // 半透明の黒
-                      borderRadius: BorderRadius.circular(10.0),
-                    ),
-                    // いいねアイコンと数
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min, // コンテンツのサイズに合わせる
-                      children: [
-                        const Icon(
-                          Icons.favorite,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${post.likeCount}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
+            // 新しいカードウィジェットを呼び出す
+            return _PostGridCard(post: post);
           },
         );
       },
     );
   }
+}
 
-  void _showPostDetailSheet(Post post) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => PostDetailSheet(post: post),
+// マイページ用の新しい2列グリッドカード
+class _PostGridCard extends StatelessWidget {
+  final Post post;
+  const _PostGridCard({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias, // 画像が角丸からはみ出ないようにする
+      elevation: 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 投稿画像
+          Expanded(
+            child: Image.network(
+              post.imageUrl,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+          ),
+          // 釣果情報
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'イカ ${post.squidSize} cm', // 仮の魚種名
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  post.egiType, // 場所として流用
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  DateFormat('yyyy.MM.dd').format(post.createdAt),
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
