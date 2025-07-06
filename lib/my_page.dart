@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'post_detail_sheet.dart';
+import 'post_detail_page.dart';
 import 'post_model.dart';
 import 'edit_profile_page.dart';
 import 'comment_page.dart';
@@ -73,9 +73,9 @@ class _MyPageState extends State<MyPage> {
             color: Theme.of(context).primaryColor.withOpacity(0.1),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
                     radius: 40,
@@ -88,18 +88,27 @@ class _MyPageState extends State<MyPage> {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Text(
-                      displayName,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          introduction,
+                          style: const TextStyle(fontSize: 16, height: 1.4),
+                        ),
+                      ],
                     ),
                   ),
                   if (isCurrentUser)
                     Row(
                       children: [
-                        // プロフィール編集ボタン
                         IconButton(
                           icon: const Icon(Icons.edit_note),
                           tooltip: 'プロフィールを編集',
@@ -111,21 +120,15 @@ class _MyPageState extends State<MyPage> {
                             );
                           },
                         ),
-                        // 設定ボタン（今回はダミー）
                         IconButton(
                           icon: const Icon(Icons.settings_outlined),
                           tooltip: '設定',
-                          onPressed: () {
-                            // TODO: 設定画面への遷移を実装
-                          },
+                          onPressed: () {},
                         ),
                       ],
                     ),
                 ],
               ),
-              const SizedBox(height: 16),
-              // 自己紹介文
-              Text(introduction, style: const TextStyle(fontSize: 16)),
             ],
           ),
         );
@@ -197,7 +200,7 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  // ユーザーの投稿一覧をグリッド形式で構築するウィジェット
+  // ▼▼▼ 投稿一覧を2列のグリッド形式で構築するウィジェットに変更 ▼▼▼
   Widget _buildUserPostsGrid() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -231,8 +234,8 @@ class _MyPageState extends State<MyPage> {
           itemCount: snapshot.data!.docs.length,
           itemBuilder: (context, index) {
             final post = Post.fromFirestore(snapshot.data!.docs[index]);
-            // 新しいカードウィジェットを呼び出す
-            return _PostGridCard(post: post);
+            // 2列表示用の新しいカードウィジェットを呼び出す
+            return _MyPageGridCard(post: post);
           },
         );
       },
@@ -240,53 +243,138 @@ class _MyPageState extends State<MyPage> {
   }
 }
 
-// マイページ用の新しい2列グリッドカード
-class _PostGridCard extends StatelessWidget {
+// マイページ用の新しい2列グリッドカード（StatefulWidgetに変更）
+class _MyPageGridCard extends StatefulWidget {
   final Post post;
-  const _PostGridCard({required this.post});
+  const _MyPageGridCard({required this.post});
+
+  @override
+  State<_MyPageGridCard> createState() => _MyPageGridCardState();
+}
+
+class _MyPageGridCardState extends State<_MyPageGridCard> {
+  final _currentUser = FirebaseAuth.instance.currentUser!;
+  bool _isLiked = false;
+  int _likeCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _likeCount = widget.post.likeCount;
+    _checkIfLiked();
+  }
+
+  Future<void> _checkIfLiked() async {
+    final doc = await FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.post.id)
+        .collection('likes')
+        .doc(_currentUser.uid)
+        .get();
+    if (mounted && doc.exists) {
+      setState(() => _isLiked = true);
+    }
+  }
+
+  Future<void> _handleLike() async {
+    setState(() {
+      _isLiked ? _likeCount-- : _likeCount++;
+      _isLiked = !_isLiked;
+    });
+    final postRef = FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.post.id);
+    final likeRef = postRef.collection('likes').doc(_currentUser.uid);
+    if (_isLiked) {
+      await likeRef.set({'likedAt': Timestamp.now()});
+      await postRef.update({'likeCount': FieldValue.increment(1)});
+    } else {
+      await likeRef.delete();
+      await postRef.update({'likeCount': FieldValue.increment(-1)});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias, // 画像が角丸からはみ出ないようにする
-      elevation: 2,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 投稿画像
-          Expanded(
-            child: Image.network(
-              post.imageUrl,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
+    return GestureDetector(
+      onTap: () {
+        // タップしたら投稿詳細ページに移動
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PostDetailPage(post: widget.post),
           ),
-          // 釣果情報
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'イカ ${post.squidSize} cm', // 仮の魚種名
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  post.egiType, // 場所として流用
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  DateFormat('yyyy.MM.dd').format(post.createdAt),
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-              ],
+        );
+      },
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 画像
+            Expanded(
+              child: Image.network(
+                widget.post.imageUrl,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
             ),
-          ),
-        ],
+            // 釣果情報
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Text(
+                'イカ ${widget.post.squidSize} cm',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            // ▼▼▼ いいね・コメントボタンを復活 ▼▼▼
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: Icon(
+                      _isLiked ? Icons.favorite : Icons.favorite_border,
+                      color: _isLiked ? Colors.red : Colors.grey,
+                      size: 20,
+                    ),
+                    onPressed: _handleLike,
+                  ),
+                  Text('$_likeCount', style: const TextStyle(fontSize: 12)),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(
+                      Icons.chat_bubble_outline,
+                      color: Colors.grey,
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => CommentPage(post: widget.post),
+                        ),
+                      );
+                    },
+                  ),
+                  Text(
+                    '${widget.post.commentCount}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
