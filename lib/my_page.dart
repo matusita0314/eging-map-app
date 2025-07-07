@@ -317,7 +317,8 @@ class _MyPageGridCardState extends State<_MyPageGridCard> {
               child: Image.network(
                 widget.post.imageUrl,
                 width: double.infinity,
-                fit: BoxFit.cover,
+                // ▼▼▼ 画像の表示方法をcontainに変更 ▼▼▼
+                fit: BoxFit.contain,
               ),
             ),
             // 釣果情報
