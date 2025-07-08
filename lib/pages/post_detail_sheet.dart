@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'post_model.dart';
+import '../models/post_model.dart';
 
 class PostDetailSheet extends StatelessWidget {
   final Post post;
@@ -9,12 +9,9 @@ class PostDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // GestureDetectorに `behavior` プロパティを追加
     return GestureDetector(
       onTap: () {},
-      // ▼▼▼ この行を追加します ▼▼▼
       behavior: HitTestBehavior.opaque,
-      // ▲▲▲ ここまで ▲▲▲
       child: Container(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.8,

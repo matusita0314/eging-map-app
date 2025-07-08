@@ -4,10 +4,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'common_app_bar.dart';
-import 'post_model.dart';
+import '../widgets/common_app_bar.dart';
+import '../models/post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'post_detail_page.dart';
+import '../widgets/post_detail_page.dart';
 import 'add_post_page.dart';
 
 class MapPage extends StatefulWidget {
@@ -44,7 +44,7 @@ class _MapPageState extends State<MapPage> {
     try {
       final icon = await BitmapDescriptor.fromAssetImage(
         const ImageConfiguration(size: Size(48, 48)),
-        'assets/images/squid_icon.png',
+        'assets/images/squid.png',
       );
       if (mounted) {
         setState(() {

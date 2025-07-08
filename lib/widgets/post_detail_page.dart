@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'post_model.dart';
-import 'my_page.dart';
-import 'comment_model.dart';
+import '../models/post_model.dart';
+import '../pages/my_page.dart';
+import '../models/comment_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import '../pages/edit_post_page.dart';
 
 class PostDetailPage extends StatelessWidget {
   final Post post;
@@ -18,8 +20,33 @@ class PostDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
-      appBar: AppBar(title: Text('${post.userName}の投稿')),
+      appBar: AppBar(
+        title: Text('${post.userName}の投稿'),
+        actions: [
+          if (post.userId == currentUserId)
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                // `context`を正しく参照するために一手間加える
+                final state = (context as Element)
+                    .findAncestorStateOfType<_PostDetailCardState>();
+                if (state == null) return;
+
+                if (value == 'edit') {
+                  // TODO: 編集ページへの遷移
+                } else if (value == 'delete') {
+                  state._onDeletePressed(context);
+                }
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(value: 'edit', child: Text('編集')),
+                const PopupMenuItem<String>(value: 'delete', child: Text('削除')),
+              ],
+            ),
+        ],
+      ),
       body: _PostDetailCard(post: post, scrollToComments: scrollToComments),
     );
   }
@@ -28,7 +55,7 @@ class PostDetailPage extends StatelessWidget {
 class _PostDetailCard extends StatefulWidget {
   final Post post;
   final bool scrollToComments;
-  const _PostDetailCard({required this.post, this.scrollToComments = false});
+  const _PostDetailCard({required this.post, required this.scrollToComments});
 
   @override
   State<_PostDetailCard> createState() => _PostDetailCardState();
@@ -57,18 +84,19 @@ class _PostDetailCardState extends State<_PostDetailCard> {
     }
   }
 
+  @override
+  void dispose() {
+    _commentController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   void _scrollToComments() {
     Scrollable.ensureVisible(
       _commentSectionKey.currentContext!,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
-  }
-
-  @override
-  void dispose() {
-    _commentController.dispose();
-    super.dispose();
   }
 
   Future<void> _checkIfLiked() async {
@@ -85,16 +113,12 @@ class _PostDetailCardState extends State<_PostDetailCard> {
 
   Future<void> _getAddressFromLatLng() async {
     try {
-      // 緯度経度からPlacemark（場所情報）のリストを取得
       List<Placemark> placemarks = await placemarkFromCoordinates(
         widget.post.location.latitude,
         widget.post.location.longitude,
       );
-
-      if (placemarks.isNotEmpty) {
+      if (mounted && placemarks.isNotEmpty) {
         final Placemark place = placemarks[0];
-        // 取得した情報から住所を組み立てる
-        // 例: "石川県 金沢市"
         setState(() {
           _address =
               '${place.administrativeArea ?? ''} ${place.locality ?? ''} ${place.street ?? ''}';
@@ -131,7 +155,6 @@ class _PostDetailCardState extends State<_PostDetailCard> {
         .collection('posts')
         .doc(widget.post.id)
         .collection('comments');
-
     await commentRef.add({
       'text': text,
       'userId': _currentUser.uid,
@@ -149,18 +172,67 @@ class _PostDetailCardState extends State<_PostDetailCard> {
     FocusScope.of(context).unfocus();
   }
 
+  Future<void> _onDeletePressed(BuildContext context) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('投稿の削除'),
+          content: const Text('この投稿を本当に削除しますか？\nこの操作は元に戻せません。'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('キャンセル'),
+              onPressed: () => Navigator.of(context).pop(false),
+            ),
+            TextButton(
+              child: const Text('削除', style: TextStyle(color: Colors.red)),
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      try {
+        await FirebaseStorage.instance
+            .refFromURL(widget.post.imageUrl)
+            .delete();
+        await FirebaseFirestore.instance
+            .collection('posts')
+            .doc(widget.post.id)
+            .delete();
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('投稿を削除しました。')));
+          Navigator.of(context).pop();
+        }
+      } catch (e) {
+        print('削除中にエラーが発生しました: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('エラーが発生しました: $e')));
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isMyPost =
+        widget.post.userId == FirebaseAuth.instance.currentUser?.uid;
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
+            controller: _scrollController,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GestureDetector(
                   onTap: () {
-                    // タップされたら、そのユーザーのIDを使ってMyPageに移動
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) =>
@@ -234,7 +306,7 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      if (_address != null) // 住所が取得できたら表示
+                      if (_address != null)
                         Row(
                           children: [
                             Icon(
@@ -263,7 +335,9 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                       _buildInfoRow(
                         Icons.scale_outlined,
                         '重さ',
-                        widget.post.weight?.toString(),
+                        widget.post.weight != null
+                            ? '${widget.post.weight} g'
+                            : null,
                       ),
                       _buildSectionTitle('気象情報'),
                       _buildInfoRow(
@@ -274,12 +348,16 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                       _buildInfoRow(
                         Icons.thermostat_outlined,
                         '気温',
-                        widget.post.airTemperature?.toString(),
+                        widget.post.airTemperature != null
+                            ? '${widget.post.airTemperature} ℃'
+                            : null,
                       ),
                       _buildInfoRow(
                         Icons.waves_outlined,
                         '水温',
-                        widget.post.waterTemperature?.toString(),
+                        widget.post.waterTemperature != null
+                            ? '${widget.post.waterTemperature} ℃'
+                            : null,
                       ),
                       _buildSectionTitle('タックル情報'),
                       _buildInfoRow(
@@ -310,7 +388,7 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                               ),
                               title: Text(
                                 widget.post.caption!,
-                                style: const TextStyle(height: 1.5), // 行間を少し広げる
+                                style: const TextStyle(height: 1.5),
                               ),
                             ),
                           ],
@@ -321,9 +399,58 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                 const Divider(),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: _buildSectionTitle('コメント'),
+                  child: _buildSectionTitle('コメント', key: _commentSectionKey),
                 ),
                 _buildCommentList(),
+
+                if (isMyPost)
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 24),
+                        // 編集ボタン
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.edit),
+                          label: const Text('この投稿を編集する'),
+                          style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.blue,
+                            minimumSize: const Size.fromHeight(50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    EditPostPage(post: widget.post),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        // 削除ボタン
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.delete_forever),
+                          label: const Text('この投稿を削除する'),
+                          style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.red.shade600,
+                            minimumSize: const Size.fromHeight(50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            _onDeletePressed(context);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
@@ -358,16 +485,7 @@ class _PostDetailCardState extends State<_PostDetailCard> {
           const SizedBox(width: 8),
           Text(label, style: TextStyle(color: Colors.grey.shade700)),
           const Spacer(),
-          Text(
-            (label.contains('℃') || label.contains('g'))
-                ? value
-                : '$value ${label.contains("気温") || label.contains("水温")
-                      ? "℃"
-                      : label.contains("重さ")
-                      ? "g"
-                      : ""}',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );

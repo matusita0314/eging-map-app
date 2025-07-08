@@ -1,12 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'post_model.dart';
+// import 'package:intl/intl.dart';
+import '../models/post_model.dart';
 import 'my_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'comment_page.dart';
-import 'post_detail_page.dart';
-import 'widgets/post_grid_card.dart';
+import '../widgets/post_detail_page.dart';
+import '../widgets/post_grid_card.dart';
 
 class TimelinePage extends StatefulWidget {
   const TimelinePage({super.key});
