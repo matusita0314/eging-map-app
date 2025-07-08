@@ -6,6 +6,7 @@ import 'my_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'comment_page.dart';
 import 'post_detail_page.dart';
+import 'widgets/post_grid_card.dart';
 
 class TimelinePage extends StatefulWidget {
   const TimelinePage({super.key});
@@ -150,12 +151,12 @@ class _TodayTimeline extends StatelessWidget {
             crossAxisSpacing: 8,
             mainAxisSpacing: 8,
             // ▼▼▼ 縦横比を調整して、カードの高さを低くする ▼▼▼
-            childAspectRatio: 0.8,
+            childAspectRatio: 1.0,
           ),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final post = Post.fromFirestore(docs[index]);
-            return _TimelineGridCard(post: post);
+            return PostGridCard(post: post);
           },
         );
       },
@@ -300,7 +301,7 @@ class _TimelineGridCardState extends State<_TimelineGridCard> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'ヒットエギ: ${widget.post.egiType}',
+                  'ヒットエギ: ${widget.post.egiName}',
                   style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),

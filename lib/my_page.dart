@@ -6,6 +6,7 @@ import 'post_detail_page.dart';
 import 'post_model.dart';
 import 'edit_profile_page.dart';
 import 'comment_page.dart';
+import 'widgets/post_grid_card.dart';
 
 class MyPage extends StatefulWidget {
   final String userId;
@@ -229,13 +230,13 @@ class _MyPageState extends State<MyPage> {
             crossAxisCount: 2, // 2列表示
             crossAxisSpacing: 8,
             mainAxisSpacing: 8,
-            childAspectRatio: 0.7, // カードの縦横比を調整
+            childAspectRatio: 1.0, // カードの縦横比を調整
           ),
           itemCount: snapshot.data!.docs.length,
           itemBuilder: (context, index) {
             final post = Post.fromFirestore(snapshot.data!.docs[index]);
             // 2列表示用の新しいカードウィジェットを呼び出す
-            return _MyPageGridCard(post: post);
+            return PostGridCard(post: post);
           },
         );
       },
@@ -356,7 +357,7 @@ class _MyPageGridCardState extends State<_MyPageGridCard> {
                     constraints: const BoxConstraints(),
                     icon: const Icon(
                       Icons.chat_bubble_outline,
-                      color: Colors.grey,
+                      color: Color.fromARGB(255, 202, 95, 95),
                       size: 20,
                     ),
                     onPressed: () {

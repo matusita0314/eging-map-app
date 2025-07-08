@@ -1,3 +1,5 @@
+// lib/comment_model.dart (新規作成)
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Comment {
@@ -25,7 +27,7 @@ class Comment {
       userId: data['userId'] ?? '',
       userName: data['userName'] ?? '名無しさん',
       userPhotoUrl: data['userPhotoUrl'] ?? '',
-      createdAt: (data['createdAt'] as Timestamp? ?? Timestamp.now()).toDate(),
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
     );
   }
 }

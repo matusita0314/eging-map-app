@@ -70,7 +70,7 @@ class PostDetailSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'ヒットエギ: ${post.egiType}',
+                  'ヒットエギ: ${post.egiName}',
                   style: TextStyle(fontSize: 16, color: Colors.grey[700]),
                 ),
                 const SizedBox(height: 8),

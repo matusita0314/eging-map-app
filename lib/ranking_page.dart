@@ -7,6 +7,7 @@ import 'post_model.dart';
 import 'post_detail_page.dart';
 import 'my_page.dart';
 import 'comment_page.dart';
+import 'widgets/post_grid_card.dart';
 
 class RankingPage extends StatelessWidget {
   const RankingPage({super.key});
@@ -53,13 +54,13 @@ class RankingPage extends StatelessWidget {
                     crossAxisCount: 2,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
-                    childAspectRatio: 0.7,
+                    childAspectRatio: 1.0,
                   ),
                   itemCount: docs.length - 1,
                   itemBuilder: (context, index) {
                     final post = Post.fromFirestore(docs[index + 1]);
                     final rank = index + 2;
-                    return _RankingGridCard(post: post, rank: rank);
+                    return PostGridCard(post: post, rank: rank);
                   },
                 ),
             ],
@@ -269,7 +270,7 @@ class _TopRankCardState extends State<_TopRankCard> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'ヒットエギ: ${widget.post.egiType}',
+                      'ヒットエギ: ${widget.post.egiName}',
                     style: TextStyle(color: Colors.grey[700]),
                   ),
                 ],
