@@ -4,6 +4,7 @@ import 'timeline_page.dart';
 import 'map_page.dart';
 import 'my_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'tournament_page.dart';
 
 class AppScaffold extends StatefulWidget {
   const AppScaffold({super.key});
@@ -24,6 +25,7 @@ class _AppScaffoldState extends State<AppScaffold> {
     _pages = <Widget>[
       const RankingPage(),
       const MapPage(),
+      const TournamentPage(),
       const TimelinePage(),
       MyPage(userId: _user.uid),
     ];
@@ -46,23 +48,15 @@ class _AppScaffoldState extends State<AppScaffold> {
             icon: Icon(Icons.leaderboard),
             label: 'ランキング',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.map),
-            label: 'マップ',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.timeline),
-            label: 'タイムライン',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'マイページ',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'マップ'),
+          BottomNavigationBarItem(icon: Icon(Icons.emoji_events), label: '大会'),
+          BottomNavigationBarItem(icon: Icon(Icons.timeline), label: 'タイムライン'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'マイページ'),
         ],
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         // タブが多くなったので、タイプをfixedに設定
-        type: BottomNavigationBarType.fixed, 
+        type: BottomNavigationBarType.fixed,
         // 選択されていないアイテムの色も指定
         unselectedItemColor: Colors.grey,
         // 選択されているアイテムの色を指定

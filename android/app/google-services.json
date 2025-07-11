@@ -12,7 +12,20 @@
           "package_name": "com.example.egingapp"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "211367399364-vtnmdjf2ki091igvt5kroscokovc3rr0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.egingapp",
+            "certificate_hash": "1ab4164ef64672d93036ab2b6aed545bf9d3fcbc"
+          }
+        },
+        {
+          "client_id": "211367399364-bj9q7v983a3g8hsm69ksupjb5vp8bdbb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBJPIIu4BUSHQdKwA5IDg3HvRrxp0TO1s8"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "211367399364-bj9q7v983a3g8hsm69ksupjb5vp8bdbb.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "211367399364-l869abgceas7ubtu63mu5030b9dd9pd4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.egingapp"
+              }
+            }
+          ]
         }
       }
     }
