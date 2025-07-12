@@ -261,10 +261,29 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                     ),
                   ),
                 ),
-                Image.network(
-                  widget.post.imageUrl,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
+                AspectRatio(
+                  aspectRatio: 4 / 3, // アスペクト比を4:3に固定（お好みで16/9などに変更可能）
+                  child: Container(
+                    width: double.infinity,
+                    color: Colors.grey.shade200, // 画像読み込み中の背景色
+                    child: Image.network(
+                      widget.post.imageUrl,
+                      fit: BoxFit.cover, // コンテナを覆うように表示
+                      // 画像読み込み中のインジケーター表示
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator());
+                      },
+                      // エラーが発生した場合の表示
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.error,
+                          color: Colors.grey,
+                          size: 40,
+                        );
+                      },
+                    ),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),

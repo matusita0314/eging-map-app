@@ -37,10 +37,12 @@ class _RankingPageState extends State<RankingPage> {
         .orderBy('squidSize', descending: true)
         .limit(50)
         .snapshots();
-    
+
     _postsSubscription = stream.listen((snapshot) {
-      final newPosts = snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList();
-      if(mounted) {
+      final newPosts = snapshot.docs
+          .map((doc) => Post.fromFirestore(doc))
+          .toList();
+      if (mounted) {
         setState(() {
           _posts = newPosts;
           _isLoading = false;
@@ -57,9 +59,21 @@ class _RankingPageState extends State<RankingPage> {
 
   Future<void> _fetchRelatedData() async {
     final futures = [
-      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('following').get(),
-      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('saved_posts').get(),
-      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('liked_posts').get(),
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('following')
+          .get(),
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('saved_posts')
+          .get(),
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('liked_posts')
+          .get(),
     ];
 
     final results = await Future.wait(futures);
@@ -101,12 +115,16 @@ class _RankingPageState extends State<RankingPage> {
         // --- 1位のカード ---
         Padding(
           padding: const EdgeInsets.only(bottom: 8.0),
-          child: PostGridCard(
-            post: firstPost,
-            rank: 1,
-            isLikedByCurrentUser: _likedPostIds.contains(firstPost.id),
-            isSavedByCurrentUser: _savedPostIds.contains(firstPost.id),
-            isFollowingAuthor: _followingUserIds.contains(firstPost.userId),
+          // ▼▼▼ AspectRatioでラップして、高さを画面幅と同じに制約する ▼▼▼
+          child: AspectRatio(
+            aspectRatio: 1.6, // 縦横比を1:1（正方形）に
+            child: PostGridCard(
+              post: firstPost,
+              rank: 1,
+              isLikedByCurrentUser: _likedPostIds.contains(firstPost.id),
+              isSavedByCurrentUser: _savedPostIds.contains(firstPost.id),
+              isFollowingAuthor: _followingUserIds.contains(firstPost.userId),
+            ),
           ),
         ),
 

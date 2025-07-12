@@ -49,17 +49,13 @@ class _AddPostPageState extends State<AddPostPage> {
   }
 
   Future<void> _submitPost() async {
-    // フォームのバリデーションを実行
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
     if (_selectedWeather == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('天気を選択してください。')));
       return;
     }
-    // 画像が選択されているかチェック
     if (_imageBytes == null) {
       ScaffoldMessenger.of(
         context,
@@ -74,30 +70,38 @@ class _AddPostPageState extends State<AddPostPage> {
     try {
       final user = FirebaseAuth.instance.currentUser!;
 
-      // 1. 画像をFirebase Storageにアップロード
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final ref = FirebaseStorage.instance.ref().child(
-        'posts/${user.uid}/$fileName',
-      );
-      await ref.putData(_imageBytes!);
-      final imageUrl = await ref.getDownloadURL();
+      // ▼▼▼ 1. Firestoreの投稿ドキュメントを先に作成し、IDを取得する ▼▼▼
+      final postsRef = FirebaseFirestore.instance.collection('posts');
+      final newPostDoc = postsRef.doc();
+      final postId = newPostDoc.id;
 
-      // 2. Firestoreに投稿データを保存
-      await FirebaseFirestore.instance.collection('posts').add({
+      // ▼▼▼ 2. 取得した投稿IDをファイル名にして、画像をアップロードする ▼▼▼
+      final imageFileName = '$postId.jpg'; // ファイル名を投稿IDに
+      final ref = FirebaseStorage.instance.ref().child(
+        'posts/${user.uid}/$imageFileName',
+      );
+      final metadata = SettableMetadata(contentType: "image/jpeg");
+      await ref.putData(_imageBytes!, metadata);
+
+      // ★★ 画像URLの取得は不要になる ★★
+      // Cloud FunctionsがURLを書き込んでくれるため、ここでは待たない
+
+      // ▼▼▼ 3. テキスト情報だけで、Firestoreにドキュメントを書き込む ▼▼▼
+      //     imageUrlとthumbnailUrlは空の状態で作成される
+      await newPostDoc.set({
         'userId': user.uid,
         'userName': user.displayName ?? '名無しさん',
         'userPhotoUrl': user.photoURL ?? '',
-        'imageUrl': imageUrl,
         'createdAt': Timestamp.now(),
         'location': GeoPoint(
           widget.location.latitude,
           widget.location.longitude,
         ),
-
-        // 新しいフィールドのデータ
         'weather': _selectedWeather,
         'squidSize': double.tryParse(_squidSizeController.text) ?? 0.0,
-        'weight': double.tryParse(_weightController.text),
+        'weight': _weightController.text.isEmpty
+            ? null
+            : double.tryParse(_weightController.text),
         'egiName': _egiNameController.text,
         'egiMaker': _egiMakerController.text,
         'tackleRod': _tackleRodController.text,
@@ -108,13 +112,14 @@ class _AddPostPageState extends State<AddPostPage> {
         'caption': _captionController.text,
         'likeCount': 0,
         'commentCount': 0,
+        'imageUrl': '', // 最初は空文字
+        'thumbnailUrl': '', // 最初は空文字
       });
 
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('投稿が完了しました！')));
-        // 投稿完了後、マップページに戻る
         Navigator.of(context).pop();
       }
     } catch (e) {
@@ -326,7 +331,8 @@ class _AddPostPageState extends State<AddPostPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              TextFormField( // ▼ 追記
+              TextFormField(
+                // ▼ 追記
                 controller: _captionController,
                 decoration: const InputDecoration(
                   labelText: '一言コメント（任意）',

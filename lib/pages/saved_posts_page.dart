@@ -1,5 +1,3 @@
-// lib/pages/my_page.dart (改修後)
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -165,18 +163,107 @@ class _SavedPostsPageState extends State<SavedPostsPage> {
 
   // --- ここから下の他のメソッド (_buildProfileHeader, _buildStatsSectionなど) は変更ありません ---
   Widget _buildBadgeSection() {
-    /* ... */
-    return const SizedBox.shrink();
+    return const Padding(
+      padding: EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'バッジ',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Center(child: Text('取得したバッジはありません')),
+        ],
+      ),
+    );
   }
 
   Widget _buildProfileHeader(DocumentSnapshot userDoc) {
-    /* ... */
-    return const SizedBox.shrink();
+    final userData = userDoc.data() as Map<String, dynamic>? ?? {};
+    final photoUrl = userData['photoUrl'] as String? ?? '';
+    final displayName = userData['displayName'] as String? ?? '名無しさん';
+    final introduction = userData['introduction'] as String? ?? '自己紹介がありません';
+    final isCurrentUser = _currentUser.uid == widget.userId;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 24, 16, 24),
+      width: double.infinity,
+      color: Theme.of(context).primaryColor.withOpacity(0.1),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 40,
+            backgroundImage: photoUrl.isNotEmpty
+                ? NetworkImage(photoUrl)
+                : null,
+            child: photoUrl.isEmpty ? const Icon(Icons.person, size: 40) : null,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  introduction,
+                  style: const TextStyle(fontSize: 16, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          if (isCurrentUser)
+            IconButton(
+              icon: const Icon(Icons.edit_note),
+              tooltip: 'プロフィールを編集',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const EditProfilePage(),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _buildStatsSection(int postCount, int totalLikes) {
-    /* ... */
-    return const SizedBox.shrink();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildStatItem('釣果数', postCount.toString()),
+        _buildStatItem('総いいね', totalLikes.toString()),
+        _buildTappableStatItem(
+          '保存',
+          'saved_posts',
+          SavedPostsPage(userId: widget.userId),
+        ),
+        _buildTappableStatItem(
+          'フォロワー',
+          'followers',
+          FollowerListPage(
+            userId: widget.userId,
+            listType: FollowListType.followers,
+          ),
+        ),
+        _buildTappableStatItem(
+          'フォロー中',
+          'following',
+          FollowerListPage(
+            userId: widget.userId,
+            listType: FollowListType.following,
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildTappableStatItem(
@@ -184,22 +271,120 @@ class _SavedPostsPageState extends State<SavedPostsPage> {
     String collectionPath,
     Widget destinationPage,
   ) {
-    /* ... */
-    return const SizedBox.shrink();
+    return InkWell(
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (context) => destinationPage)),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.userId)
+              .collection(collectionPath)
+              .snapshots(),
+          builder: (context, snapshot) {
+            final count = snapshot.data?.docs.length ?? 0;
+            return _buildStatItem(label, count.toString());
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildStatItem(String label, String value) {
-    /* ... */
-    return const SizedBox.shrink();
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: Colors.grey)),
+      ],
+    );
   }
 
   Widget _buildChartSection(Map<String, int> data) {
-    /* ... */
-    return const SizedBox.shrink();
+    if (data.isEmpty) return const SizedBox.shrink();
+    final sortedEntries = data.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '月別釣果グラフ',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 200,
+            child: BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                barTouchData: BarTouchData(enabled: true),
+                titlesData: FlTitlesData(
+                  show: true,
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) => Text(
+                        sortedEntries[value.toInt()].key.substring(
+                          5,
+                        ), // '2024-07' -> '07'
+                        style: const TextStyle(fontSize: 10),
+                      ),
+                      reservedSize: 30,
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 28),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (value) =>
+                      FlLine(color: Colors.grey.shade300, strokeWidth: 0.5),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: List.generate(sortedEntries.length, (index) {
+                  return BarChartGroupData(
+                    x: index,
+                    barRods: [
+                      BarChartRodData(
+                        toY: sortedEntries[index].value.toDouble(),
+                        color: Colors.blue,
+                        width: 16,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Map<String, int> _createMonthlyChartData(List<QueryDocumentSnapshot> docs) {
-    /* ... */
-    return {};
+  Map<String, int> _createMonthlyChartData(List<Post> posts) {
+    final Map<String, int> data = {};
+    for (var post in posts) {
+      final monthKey = DateFormat('yyyy-MM').format(post.createdAt);
+      data.update(monthKey, (value) => value + 1, ifAbsent: () => 1);
+    }
+    return data;
   }
 }

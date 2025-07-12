@@ -7,6 +7,7 @@ class Post {
   final String userName;
   final String userPhotoUrl;
   final String imageUrl;
+  final String thumbnailUrl;
   final DateTime createdAt;
   final LatLng location;
 
@@ -32,6 +33,7 @@ class Post {
     required this.userName,
     required this.userPhotoUrl,
     required this.imageUrl,
+    required this.thumbnailUrl,
     required this.createdAt,
     required this.location,
     required this.weather,
@@ -60,6 +62,7 @@ class Post {
       userName: data['userName'] ?? '名無しさん',
       userPhotoUrl: data['userPhotoUrl'] ?? '',
       imageUrl: data['imageUrl'] ?? '',
+      thumbnailUrl: data['thumbnailUrl'] ?? '',
       createdAt: timestamp.toDate(),
       location: LatLng(point.latitude, point.longitude),
 

@@ -154,12 +154,18 @@ class _PostGridCardState extends State<PostGridCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              height: 230,
+            Expanded(
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(widget.post.imageUrl, fit: BoxFit.cover),
+                  Image.network(
+                    widget.post.thumbnailUrl ?? widget.post.imageUrl,
+                    fit: BoxFit.cover,
+                    // 画像読み込み中にエラーが発生した場合の表示
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(Icons.error, color: Colors.grey);
+                    },
+                  ),
                   Positioned(
                     bottom: 20,
                     left: 8,
