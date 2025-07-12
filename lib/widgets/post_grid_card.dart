@@ -3,14 +3,25 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/post_model.dart';
 import '../pages/my_page.dart';
-import 'post_detail_page.dart';
+import '../pages/post_detail_page.dart';
 
 class PostGridCard extends StatefulWidget {
   final Post post;
-  // ランキング表示用に順位をオプションで受け取る
   final int? rank;
+  // ▼▼▼ 親から状態を受け取るためのプロパティを追加 ▼▼▼
+  final bool isLikedByCurrentUser;
+  final bool isSavedByCurrentUser;
+  final bool isFollowingAuthor;
 
-  const PostGridCard({super.key, required this.post, this.rank});
+  const PostGridCard({
+    super.key,
+    required this.post,
+    this.rank,
+    // ▼▼▼ コンストラクタで状態を受け取る ▼▼▼
+    required this.isLikedByCurrentUser,
+    required this.isSavedByCurrentUser,
+    required this.isFollowingAuthor,
+  });
 
   @override
   State<PostGridCard> createState() => _PostGridCardState();
@@ -18,70 +29,28 @@ class PostGridCard extends StatefulWidget {
 
 class _PostGridCardState extends State<PostGridCard> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
-  bool _isLiked = false;
-  int _likeCount = 0;
-  bool _isFollowing = false;
-  bool _isLoadingFollow = true;
-  bool _isSaved = false;
+
+  // ▼▼▼ 親から渡された初期状態で変数を初期化 ▼▼▼
+  late bool _isLiked;
+  late bool _isSaved;
+  late bool _isFollowing;
+  late int _likeCount;
 
   @override
   void initState() {
     super.initState();
+    // ▼▼▼ Stateの初期化を、親から渡された値で行う ▼▼▼
+    _isLiked = widget.isLikedByCurrentUser;
+    _isSaved = widget.isSavedByCurrentUser;
+    _isFollowing = widget.isFollowingAuthor;
     _likeCount = widget.post.likeCount;
-    _checkIfLiked();
-    _checkIfFollowing();
-    _checkIfSaved();
+    // ▼▼▼ これで、このウィジェット内でのFirestoreへの問い合わせは不要になった ▼▼▼
   }
 
-  // いいね状態を確認する
-  Future<void> _checkIfLiked() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.post.id)
-        .collection('likes')
-        .doc(_currentUser.uid)
-        .get();
-    if (mounted && doc.exists) {
-      setState(() => _isLiked = true);
-    }
-  }
+  // ▼▼▼ 以下、いいね・保存・フォローの「実行」メソッドは変更なし ▼▼▼
 
-  // フォロー状態を確認する
-  Future<void> _checkIfFollowing() async {
-    if (widget.post.userId == _currentUser.uid) {
-      setState(() => _isLoadingFollow = false);
-      return;
-    }
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('following')
-        .doc(widget.post.userId)
-        .get();
-    if (mounted) {
-      setState(() {
-        _isFollowing = doc.exists;
-        _isLoadingFollow = false;
-      });
-    }
-  }
-
-  Future<void> _checkIfSaved() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('saved_posts')
-        .doc(widget.post.id)
-        .get();
-    if (mounted && doc.exists) {
-      setState(() {
-        _isSaved = true;
-      });
-    }
-  }
-
-  // 保存状態を切り替えるメソッド
   Future<void> _handleSave() async {
+    // UIを即時反映
     setState(() {
       _isSaved = !_isSaved;
     });
@@ -93,35 +62,56 @@ class _PostGridCardState extends State<PostGridCard> {
         .doc(widget.post.id);
 
     if (_isSaved) {
-      // 保存する場合は、投稿IDと保存日時を書き込む
       await savedDocRef.set({'savedAt': Timestamp.now()});
     } else {
-      // 保存解除する場合は、ドキュメントを削除
       await savedDocRef.delete();
     }
   }
 
-  // いいね処理
   Future<void> _handleLike() async {
+    // UIを即時反映
     setState(() {
       _isLiked ? _likeCount-- : _likeCount++;
       _isLiked = !_isLiked;
     });
+
     final postRef = FirebaseFirestore.instance
         .collection('posts')
         .doc(widget.post.id);
-    final likeRef = postRef.collection('likes').doc(_currentUser.uid);
+
+    // ▼▼▼ 新しい「いいね」の保存場所を参照 ▼▼▼
+    final likedPostRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(_currentUser.uid)
+        .collection('liked_posts') // users/{userID}/liked_posts/
+        .doc(widget.post.id);
+
+    // ▼▼▼ バッチ処理で2つの書き込みを同時に行う ▼▼▼
+    final batch = FirebaseFirestore.instance.batch();
+
     if (_isLiked) {
-      await likeRef.set({'likedAt': Timestamp.now()});
-      await postRef.update({'likeCount': FieldValue.increment(1)});
+      // 新しい構造に「いいね」を記録
+      batch.set(likedPostRef, {'likedAt': Timestamp.now()});
+      // 投稿のlikeCountを増やす
+      batch.update(postRef, {'likeCount': FieldValue.increment(1)});
     } else {
-      await likeRef.delete();
-      await postRef.update({'likeCount': FieldValue.increment(-1)});
+      // 新しい構造から「いいね」を削除
+      batch.delete(likedPostRef);
+      // 投稿のlikeCountを減らす
+      batch.update(postRef, {'likeCount': FieldValue.increment(-1)});
+    }
+
+    // バッチ処理を実行
+    try {
+      await batch.commit();
+    } catch (e) {
+      // エラーが発生した場合はUIを元に戻すなどの処理も検討できる
+      print('いいね処理のエラー: $e');
     }
   }
 
-  // フォロー処理
   Future<void> _handleFollow() async {
+    // UIを即時反映
     setState(() => _isFollowing = !_isFollowing);
     final batch = FirebaseFirestore.instance.batch();
     final myFollowingRef = FirebaseFirestore.instance
@@ -164,21 +154,17 @@ class _PostGridCardState extends State<PostGridCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 画像とユーザー情報、フォローボタン、ランキング表示
             SizedBox(
-              // ExpandedをSizedBoxに変更し、高さを制限
-              height: 250, // ここで画像の表示高さを調整 (例: 150px)
+              height: 230,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   Image.network(widget.post.imageUrl, fit: BoxFit.cover),
-                  // ユーザー情報
                   Positioned(
                     bottom: 20,
                     left: 8,
                     child: GestureDetector(
                       onTap: () {
-                        // ユーザーアイコンや名前をタップした場合はマイページへ
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (context) =>
@@ -212,8 +198,8 @@ class _PostGridCardState extends State<PostGridCard> {
                       ),
                     ),
                   ),
-                  // フォローボタン
-                  if (!isMyPost && !_isLoadingFollow)
+                  // ▼▼▼ _isLoadingFollowの判定を削除 ▼▼▼
+                  if (!isMyPost)
                     Positioned(
                       bottom: 8,
                       right: 8,
@@ -247,7 +233,6 @@ class _PostGridCardState extends State<PostGridCard> {
                         ),
                       ),
                     ),
-                  // ランキング表示
                   if (widget.rank != null)
                     Positioned(
                       top: 4,
@@ -273,7 +258,6 @@ class _PostGridCardState extends State<PostGridCard> {
                 ],
               ),
             ),
-            // 釣果情報
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
               child: Column(
@@ -298,7 +282,7 @@ class _PostGridCardState extends State<PostGridCard> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(
-                    height: 22, // コメント1行分の高さを確保
+                    height: 22,
                     child:
                         (widget.post.caption != null &&
                             widget.post.caption!.isNotEmpty)
@@ -314,18 +298,16 @@ class _PostGridCardState extends State<PostGridCard> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           )
-                        : null, // captionがなければ何も表示しないが、高さは維持される
+                        : null,
                   ),
                 ],
               ),
             ),
-            // いいね・コメント数
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 8, 4),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // --- いいねボタン ---
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -334,12 +316,10 @@ class _PostGridCardState extends State<PostGridCard> {
                       color: _isLiked ? Colors.red : Colors.grey,
                       size: 25,
                     ),
-                    onPressed: _handleLike, // その場でいいね/いいね解除する
+                    onPressed: _handleLike,
                   ),
                   Text('$_likeCount', style: const TextStyle(fontSize: 12)),
                   const SizedBox(width: 8),
-
-                  // --- コメントボタン ---
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -349,7 +329,6 @@ class _PostGridCardState extends State<PostGridCard> {
                       size: 25,
                     ),
                     onPressed: () {
-                      // 詳細ページを開き、コメント欄へスクロールする
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => PostDetailPage(
@@ -365,8 +344,6 @@ class _PostGridCardState extends State<PostGridCard> {
                     style: const TextStyle(fontSize: 12),
                   ),
                   const SizedBox(width: 8),
-
-                  // --- 保存ボタン ---
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),

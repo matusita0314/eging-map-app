@@ -1,5 +1,4 @@
-// lib/pages/my_page.dart (最終修正版)
-
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,28 +20,82 @@ class MyPage extends StatefulWidget {
 
 class _MyPageState extends State<MyPage> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
+  late final StreamSubscription _postsSubscription;
 
-  Widget _buildBadgeSection() {
-    return const Padding(
-      padding: EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'バッジ',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 8),
-          Center(child: Text('取得したバッジはありません')),
-        ],
-      ),
-    );
+  List<Post> _posts = [];
+  Set<String> _likedPostIds = {};
+  Set<String> _savedPostIds = {};
+  Set<String> _followingUserIds = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _fetchRelatedData();
+
+    final stream = FirebaseFirestore.instance
+        .collection('posts')
+        .where('userId', isEqualTo: widget.userId)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+
+    _postsSubscription = stream.listen((snapshot) {
+      // ▼▼▼ ご要望のログ出力を追加 ▼▼▼
+      print("◉ マイページの投稿データを受信 (件数: ${snapshot.docs.length})");
+
+      if (mounted) {
+        setState(() {
+          _posts = snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList();
+          _isLoading = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _postsSubscription.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchRelatedData() async {
+    final futures = [
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('following')
+          .get(),
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('saved_posts')
+          .get(),
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('liked_posts')
+          .get(),
+    ];
+
+    final results = await Future.wait(futures);
+    if (!mounted) return;
+
+    final followingDocs = results[0] as QuerySnapshot;
+    final savedDocs = results[1] as QuerySnapshot;
+    final likedDocs = results[2] as QuerySnapshot;
+
+    setState(() {
+      _followingUserIds = followingDocs.docs.map((doc) => doc.id).toSet();
+      _savedPostIds = savedDocs.docs.map((doc) => doc.id).toSet();
+      _likedPostIds = likedDocs.docs.map((doc) => doc.id).toSet();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    // ユーザー情報は最初に一度だけ取得
     return Scaffold(
-      // まずユーザー情報を一度だけ取得する
       body: FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance
             .collection('users')
@@ -53,62 +106,82 @@ class _MyPageState extends State<MyPage> {
             return const Center(child: CircularProgressIndicator());
           }
           final userDoc = userSnapshot.data!;
+          final totalLikes = _posts.fold<int>(
+            0,
+            (sum, post) => sum + post.likeCount,
+          );
+          final monthlyData = _createMonthlyChartData(_posts);
 
-          // 次に投稿一覧をリアルタイムで取得する
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('posts')
-                .where('userId', isEqualTo: widget.userId)
-                .orderBy('createdAt', descending: true)
-                .snapshots(),
-            builder: (context, postsSnapshot) {
-              if (!postsSnapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final postDocs = postsSnapshot.data!.docs;
-
-              // 総いいね数を計算
-              final totalLikes = postDocs.fold<int>(0, (sum, doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return sum + (data['likeCount'] as int? ?? 0);
-              });
-
-              // 月別グラフ用のデータを集計
-              final monthlyData = _createMonthlyChartData(postDocs);
-
-              return SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildProfileHeader(userDoc),
-                    const SizedBox(height: 16),
-                    _buildStatsSection(postDocs.length, totalLikes),
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    _buildChartSection(monthlyData),
-                    const Divider(),
-                    _buildBadgeSection(),
-                    const Divider(),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      child: Text(
-                        'これまでの投稿',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    _buildUserPostsGrid(postsSnapshot.data!),
-                  ],
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildProfileHeader(userDoc),
+                const SizedBox(height: 16),
+                _buildStatsSection(_posts.length, totalLikes),
+                const Divider(height: 32),
+                _buildChartSection(monthlyData),
+                const Divider(),
+                _buildBadgeSection(),
+                const Divider(),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    'これまでの投稿',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                 ),
-              );
-            },
+                _buildUserPostsGrid(),
+              ],
+            ),
           );
         },
       ),
     );
   }
+
+  Widget _buildUserPostsGrid() {
+    if (_isLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (_posts.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: Text('まだ投稿がありません。'),
+        ),
+      );
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 1.0,
+      ),
+      itemCount: _posts.length,
+      itemBuilder: (context, index) {
+        final post = _posts[index];
+        return PostGridCard(
+          post: post,
+          isLikedByCurrentUser: _likedPostIds.contains(post.id),
+          isSavedByCurrentUser: _savedPostIds.contains(post.id),
+          isFollowingAuthor: _followingUserIds.contains(post.userId),
+        );
+      },
+    );
+  }
+
+  // --- ここから下は変更のないUI構築用のヘルパーメソッドです ---
 
   Widget _buildProfileHeader(DocumentSnapshot userDoc) {
     final userData = userDoc.data() as Map<String, dynamic>? ?? {};
@@ -177,8 +250,6 @@ class _MyPageState extends State<MyPage> {
           'saved_posts',
           SavedPostsPage(userId: widget.userId),
         ),
-
-        // ▼▼▼ 以下のように修正 ▼▼▼
         _buildTappableStatItem(
           'フォロワー',
           'followers',
@@ -205,11 +276,9 @@ class _MyPageState extends State<MyPage> {
     Widget destinationPage,
   ) {
     return InkWell(
-      onTap: () {
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (context) => destinationPage));
-      },
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (context) => destinationPage)),
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -238,6 +307,23 @@ class _MyPageState extends State<MyPage> {
         const SizedBox(height: 4),
         Text(label, style: const TextStyle(color: Colors.grey)),
       ],
+    );
+  }
+
+  Widget _buildBadgeSection() {
+    return const Padding(
+      padding: EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'バッジ',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Center(child: Text('取得したバッジはありません')),
+        ],
+      ),
     );
   }
 
@@ -312,41 +398,12 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  Map<String, int> _createMonthlyChartData(List<QueryDocumentSnapshot> docs) {
+  Map<String, int> _createMonthlyChartData(List<Post> posts) {
     final Map<String, int> data = {};
-    for (var doc in docs) {
-      final postData = doc.data() as Map<String, dynamic>;
-      final createdAt = (postData['createdAt'] as Timestamp).toDate();
-      final monthKey = DateFormat('yyyy-MM').format(createdAt);
+    for (var post in posts) {
+      final monthKey = DateFormat('yyyy-MM').format(post.createdAt);
       data.update(monthKey, (value) => value + 1, ifAbsent: () => 1);
     }
     return data;
-  }
-
-  Widget _buildUserPostsGrid(QuerySnapshot snapshot) {
-    if (snapshot.docs.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.0),
-          child: Text('まだ投稿がありません。'),
-        ),
-      );
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 1.0,
-      ),
-      itemCount: snapshot.docs.length,
-      itemBuilder: (context, index) {
-        final post = Post.fromFirestore(snapshot.docs[index]);
-        return PostGridCard(post: post);
-      },
-    );
   }
 }

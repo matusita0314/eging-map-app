@@ -1,11 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// lib/pages/timeline_page.dart (最終確定版)
+
+import 'dart:async';
 import 'package:flutter/material.dart';
-// import 'package:intl/intl.dart';
-import '../models/post_model.dart';
-import 'my_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'comment_page.dart';
-import '../widgets/post_detail_page.dart';
+import 'package:collection/collection.dart';
+import '../models/post_model.dart';
 import '../widgets/post_grid_card.dart';
 
 class TimelinePage extends StatefulWidget {
@@ -58,6 +58,7 @@ class _CustomTabSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ... このウィジェットの中身は変更ありません ...
     return Container(
       height: 40,
       width: 220,
@@ -101,6 +102,7 @@ class _CustomTabSwitcher extends StatelessWidget {
   }
 
   Widget _buildTabItem(BuildContext context, String title, int index) {
+    // ... このウィジェットの中身は変更ありません ...
     final isSelected = selectedIndex == index;
     return Expanded(
       child: GestureDetector(
@@ -120,299 +122,107 @@ class _CustomTabSwitcher extends StatelessWidget {
   }
 }
 
-class _TodayTimeline extends StatelessWidget {
+class _TodayTimeline extends StatefulWidget {
   const _TodayTimeline();
 
   @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final startOfToday = DateTime(now.year, now.month, now.day);
-    final endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('posts')
-          .where('createdAt', isGreaterThanOrEqualTo: startOfToday)
-          .orderBy('createdAt', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text('今日の投稿はまだありません。'));
-        }
-        final docs = snapshot.data!.docs;
-
-        return GridView.builder(
-          padding: const EdgeInsets.all(8.0),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            // ▼▼▼ 縦横比を調整して、カードの高さを低くする ▼▼▼
-            childAspectRatio: 1.0,
-          ),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final post = Post.fromFirestore(docs[index]);
-            return PostGridCard(post: post);
-          },
-        );
-      },
-    );
-  }
+  State<_TodayTimeline> createState() => _TodayTimelineState();
 }
 
-class _TimelineGridCard extends StatefulWidget {
-  final Post post;
-  const _TimelineGridCard({required this.post});
-
-  @override
-  State<_TimelineGridCard> createState() => _TimelineGridCardState();
-}
-
-class _TimelineGridCardState extends State<_TimelineGridCard> {
+class _TodayTimelineState extends State<_TodayTimeline> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
-  bool _isLiked = false;
-  int _likeCount = 0;
-  bool _isFollowing = false;
-  bool _isLoadingFollow = true;
+  late final StreamSubscription _postsSubscription;
+
+  List<Post> _posts = [];
+  Set<String> _likedPostIds = {};
+  Set<String> _savedPostIds = {};
+  Set<String> _followingUserIds = {};
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _likeCount = widget.post.likeCount;
-    _checkIfLiked();
-    _checkIfFollowing();
-  }
+    
+    // ▼▼▼ まず関連データを一度だけ取得する ▼▼▼
+    _fetchRelatedData(); 
 
-  Future<void> _checkIfLiked() async {
-    final doc = await FirebaseFirestore.instance
+    // ▼▼▼ 投稿のリアルタイム監視を開始 ▼▼▼
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final stream = FirebaseFirestore.instance
         .collection('posts')
-        .doc(widget.post.id)
-        .collection('likes')
-        .doc(_currentUser.uid)
-        .get();
-    if (mounted && doc.exists) {
-      setState(() => _isLiked = true);
-    }
-  }
+        .where('createdAt', isGreaterThanOrEqualTo: startOfToday)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
 
-  Future<void> _checkIfFollowing() async {
-    if (widget.post.userId == _currentUser.uid) {
-      setState(() => _isLoadingFollow = false);
-      return;
-    }
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('following')
-        .doc(widget.post.userId)
-        .get();
-    if (mounted) {
-      setState(() {
-        _isFollowing = doc.exists;
-        _isLoadingFollow = false;
-      });
-    }
-  }
-
-  Future<void> _handleLike() async {
-    setState(() {
-      _isLiked ? _likeCount-- : _likeCount++;
-      _isLiked = !_isLiked;
+    _postsSubscription = stream.listen((snapshot) {
+      print("◉ 投稿データを受信 (件数: ${snapshot.docs.length})");
+      final newPosts = snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList();
+      if (mounted) {
+        setState(() {
+          _posts = newPosts;
+          _isLoading = false; // 投稿データが来たらローディング解除
+        });
+      }
     });
-    final postRef = FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.post.id);
-    final likeRef = postRef.collection('likes').doc(_currentUser.uid);
-    if (_isLiked) {
-      await likeRef.set({'likedAt': Timestamp.now()});
-      await postRef.update({'likeCount': FieldValue.increment(1)});
-    } else {
-      await likeRef.delete();
-      await postRef.update({'likeCount': FieldValue.increment(-1)});
-    }
   }
 
-  Future<void> _handleFollow() async {
-    setState(() => _isFollowing = !_isFollowing);
-    final batch = FirebaseFirestore.instance.batch();
-    final myFollowingRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('following')
-        .doc(widget.post.userId);
-    final theirFollowersRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.post.userId)
-        .collection('followers')
-        .doc(_currentUser.uid);
-    if (_isFollowing) {
-      batch.set(myFollowingRef, {'followedAt': Timestamp.now()});
-      batch.set(theirFollowersRef, {'followerAt': Timestamp.now()});
-    } else {
-      batch.delete(myFollowingRef);
-      batch.delete(theirFollowersRef);
-    }
-    await batch.commit();
+  @override
+  void dispose() {
+    _postsSubscription.cancel();
+    super.dispose();
+  }
+
+  // ▼▼▼ 「いいね」の読み込みも効率化された最終版のメソッド ▼▼▼
+  Future<void> _fetchRelatedData() async {
+    
+    final futures = [
+      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('following').get(),
+      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('saved_posts').get(),
+      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('liked_posts').get(), // 新しいデータ構造を読む
+    ];
+
+    final results = await Future.wait(futures);
+    if (!mounted) return;
+
+    final followingDocs = results[0] as QuerySnapshot;
+    final savedDocs = results[1] as QuerySnapshot;
+    final likedDocs = results[2] as QuerySnapshot;
+
+    setState(() {
+      _followingUserIds = followingDocs.docs.map((doc) => doc.id).toSet();
+      _savedPostIds = savedDocs.docs.map((doc) => doc.id).toSet();
+      _likedPostIds = likedDocs.docs.map((doc) => doc.id).toSet();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final isMyPost = _currentUser.uid == widget.post.userId;
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_posts.isEmpty) {
+      return const Center(child: Text('今日の投稿はまだありません。'));
+    }
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 2,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ▼▼▼ 画像部分をタップすると詳細ページへ ▼▼▼
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => PostDetailPage(post: widget.post),
-                  ),
-                );
-              },
-              child: Image.network(
-                widget.post.imageUrl,
-                fit: BoxFit.contain, // 画像全体を表示
-                width: double.infinity,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'イカ ${widget.post.squidSize} cm',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'ヒットエギ: ${widget.post.egiName}',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          // ▼▼▼ ユーザー情報とフォローボタン ▼▼▼
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            MyPage(userId: widget.post.userId),
-                      ),
-                    );
-                  },
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 12,
-                        backgroundImage: widget.post.userPhotoUrl.isNotEmpty
-                            ? NetworkImage(widget.post.userPhotoUrl)
-                            : null,
-                        child: widget.post.userPhotoUrl.isEmpty
-                            ? const Icon(Icons.person, size: 12)
-                            : null,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        widget.post.userName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                if (!isMyPost && !_isLoadingFollow)
-                  SizedBox(
-                    height: 24,
-                    child: ElevatedButton(
-                      onPressed: _handleFollow,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isFollowing
-                            ? Colors.blue
-                            : Colors.white,
-                        foregroundColor: _isFollowing
-                            ? Colors.white
-                            : Colors.blue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: const BorderSide(color: Colors.blue),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        _isFollowing ? 'フォロー中' : '+ フォロー',
-                        style: const TextStyle(fontSize: 10),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          // ▼▼▼ いいね・コメントボタン ▼▼▼
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                IconButton(
-                  icon: Icon(
-                    _isLiked ? Icons.favorite : Icons.favorite_border,
-                    color: _isLiked ? Colors.red : Colors.grey,
-                    size: 20,
-                  ),
-                  onPressed: _handleLike,
-                ),
-                Text('$_likeCount', style: const TextStyle(fontSize: 12)),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(
-                    Icons.chat_bubble_outline,
-                    color: Colors.grey,
-                    size: 20,
-                  ),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => CommentPage(post: widget.post),
-                      ),
-                    );
-                  },
-                ),
-                Text(
-                  '${widget.post.commentCount}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
+    return GridView.builder(
+      padding: const EdgeInsets.all(8.0),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 1.0,
       ),
+      itemCount: _posts.length,
+      itemBuilder: (context, index) {
+        final post = _posts[index];
+        return PostGridCard(
+          post: post,
+          isLikedByCurrentUser: _likedPostIds.contains(post.id),
+          isSavedByCurrentUser: _savedPostIds.contains(post.id),
+          isFollowingAuthor: _followingUserIds.contains(post.userId),
+        );
+      },
     );
   }
 }
