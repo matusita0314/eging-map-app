@@ -1,3 +1,5 @@
+// lib/pages/my_page.dart (最終確定版)
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -94,22 +96,19 @@ class _MyPageState extends State<MyPage> {
 
   @override
   Widget build(BuildContext context) {
-    // ユーザー情報は最初に一度だけ取得
+    // ユーザーのプロフィール情報（ランクや累計釣果数など）はリアルタイムで更新を反映させたいので、
+    // FutureBuilderからStreamBuilderに変更します。
     return Scaffold(
-      body: FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
             .collection('users')
             .doc(widget.userId)
-            .get(),
+            .snapshots(),
         builder: (context, userSnapshot) {
           if (!userSnapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
           final userDoc = userSnapshot.data!;
-          final totalLikes = _posts.fold<int>(
-            0,
-            (sum, post) => sum + post.likeCount,
-          );
           final monthlyData = _createMonthlyChartData(_posts);
 
           return SingleChildScrollView(
@@ -118,7 +117,7 @@ class _MyPageState extends State<MyPage> {
               children: [
                 _buildProfileHeader(userDoc),
                 const SizedBox(height: 16),
-                _buildStatsSection(_posts.length, totalLikes),
+                _buildStatsSection(userDoc),
                 const Divider(height: 32),
                 _buildChartSection(monthlyData),
                 const Divider(),
@@ -140,54 +139,12 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  Widget _buildUserPostsGrid() {
-    if (_isLoading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.0),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-    if (_posts.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.0),
-          child: Text('まだ投稿がありません。'),
-        ),
-      );
-    }
-
-    return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 1.0,
-      ),
-      itemCount: _posts.length,
-      itemBuilder: (context, index) {
-        final post = _posts[index];
-        return PostGridCard(
-          post: post,
-          isLikedByCurrentUser: _likedPostIds.contains(post.id),
-          isSavedByCurrentUser: _savedPostIds.contains(post.id),
-          isFollowingAuthor: _followingUserIds.contains(post.userId),
-        );
-      },
-    );
-  }
-
-  // --- ここから下は変更のないUI構築用のヘルパーメソッドです ---
-
   Widget _buildProfileHeader(DocumentSnapshot userDoc) {
     final userData = userDoc.data() as Map<String, dynamic>? ?? {};
     final photoUrl = userData['photoUrl'] as String? ?? '';
     final displayName = userData['displayName'] as String? ?? '名無しさん';
     final introduction = userData['introduction'] as String? ?? '自己紹介がありません';
+    final rank = userData['rank'] as String? ?? 'beginner';
     final isCurrentUser = _currentUser.uid == widget.userId;
 
     return Container(
@@ -209,12 +166,19 @@ class _MyPageState extends State<MyPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  displayName,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      displayName,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildRankBadge(rank),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -239,12 +203,48 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  Widget _buildStatsSection(int postCount, int totalLikes) {
+  Widget _buildRankBadge(String rank) {
+    Color badgeColor;
+    String badgeText;
+    switch (rank) {
+      case 'amateur':
+        badgeColor = Colors.blue.shade700;
+        badgeText = 'アマチュア';
+        break;
+      case 'pro':
+        badgeColor = Colors.amber.shade800;
+        badgeText = 'プロ';
+        break;
+      default: // beginner
+        badgeColor = Colors.green;
+        badgeText = 'ビギナー';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: badgeColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        badgeText,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatsSection(DocumentSnapshot userDoc) {
+    final userData = userDoc.data() as Map<String, dynamic>? ?? {};
+    final totalCatches = (userData['totalCatches'] ?? 0).toString();
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _buildStatItem('釣果数', postCount.toString()),
-        _buildStatItem('総いいね', totalLikes.toString()),
+        _buildStatItem('釣果数', totalCatches),
         _buildTappableStatItem(
           '保存',
           'saved_posts',
@@ -405,5 +405,46 @@ class _MyPageState extends State<MyPage> {
       data.update(monthKey, (value) => value + 1, ifAbsent: () => 1);
     }
     return data;
+  }
+
+  Widget _buildUserPostsGrid() {
+    if (_isLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (_posts.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: Text('まだ投稿がありません。'),
+        ),
+      );
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 1.0,
+      ),
+      itemCount: _posts.length,
+      itemBuilder: (context, index) {
+        final post = _posts[index];
+        return PostGridCard(
+          post: post,
+          isLikedByCurrentUser: _likedPostIds.contains(post.id),
+          isSavedByCurrentUser: _savedPostIds.contains(post.id),
+          isFollowingAuthor: _followingUserIds.contains(post.userId),
+        );
+      },
+    );
   }
 }

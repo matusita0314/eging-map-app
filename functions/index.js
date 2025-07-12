@@ -1,58 +1,62 @@
-// functions/index.js (v2構文 修正版)
+// functions/index.js (v2対応版)
 
-const {onObjectFinalized} = require("firebase-functions/v2/storage");
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
-const {getStorage} = require("firebase-admin/storage");
-const logger = require("firebase-functions/logger");
-const path = require("path");
-const os = require("os");
-const fs = require("fs");
-const sharp = require("sharp");
+const {getFirestore} = require("firebase-admin/firestore");
 
+// Firebase Admin SDKを初期化
 initializeApp();
 
-exports.generateThumbnail = onObjectFinalized(
-  { region: "asia-northeast1" },
-  async (event) => {
-  const fileBucket = event.bucket;
-  const filePath = event.data.name;
-  const contentType = event.data.contentType;
-
-  if (!filePath.startsWith("posts/")) {
-    logger.log("This is not a post image.");
+/**
+ * 新しい投稿が作成されたときに、ユーザーの累計釣果とランクを更新する関数
+ */
+exports.updateUserRankOnNewPost = onDocumentCreated("posts/{postId}", async (event) => {
+  // 作成されたドキュメントのスナップショットを取得
+  const snap = event.data;
+  if (!snap) {
+    console.log("No data associated with the event");
     return;
   }
-  if (path.basename(filePath).startsWith("thumb_")) {
-    logger.log("This is already a thumbnail, skipping.");
-    return;
-  }
-  // 3. 画像ファイル以外は無視
-  if (!contentType.startsWith("image/")) {
-    logger.log("This is not an image, skipping.");
-    return;
-  }
+  const newPost = snap.data();
+  const userId = newPost.userId;
+  const postSize = newPost.squidSize;
 
-  const bucket = getStorage().bucket(fileBucket);
-  const tempFilePath = path.join(os.tmpdir(), path.basename(filePath));
-  await bucket.file(filePath).download({destination: tempFilePath});
-  logger.log("Image downloaded locally to", tempFilePath);
+  const userRef = getFirestore().collection('users').doc(userId);
 
-  const thumbFileName = `thumb_${path.basename(filePath)}`;
-  const thumbFilePath = path.join(os.tmpdir(), thumbFileName);
+  // トランザクションを使って、安全にデータの読み書きを行う
+  return getFirestore().runTransaction(async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    if (!userDoc.exists) {
+      throw `User document with ID ${userId} not found!`;
+    }
 
-  await sharp(tempFilePath)
-      .resize(200, 200)
-      .toFile(thumbFilePath);
+    const userData = userDoc.data();
+    
+    // 累計記録を計算
+    const currentTotalCatches = userData.totalCatches || 0;
+    const currentMaxSize = userData.maxSize || 0;
+    const currentRank = userData.rank || 'beginner';
 
-  const thumbFileDir = path.dirname(filePath);
-  const thumbUploadPath = path.join(thumbFileDir, thumbFileName);
+    const newTotalCatches = currentTotalCatches + 1;
+    const newMaxSize = Math.max(currentMaxSize, postSize);
+    
+    let newRank = currentRank;
 
-  await bucket.upload(thumbFilePath, {
-    destination: thumbUploadPath,
-    metadata: {contentType: "image/jpeg"},
+    // ランクアップ条件を判定
+    if (currentRank === 'beginner' && newTotalCatches >= 5 && newMaxSize >= 15) {
+      newRank = 'amateur';
+      console.log(`User ${userId} ranked up to amateur!`);
+    } else if (currentRank === 'amateur' && newTotalCatches >= 15 && newMaxSize >= 25) {
+      newRank = 'pro';
+      console.log(`User ${userId} ranked up to pro!`);
+    }
+
+    // 計算結果をFirestoreに書き込む
+    console.log(`Updating user ${userId}: Catches=${newTotalCatches}, MaxSize=${newMaxSize}, Rank=${newRank}`);
+    return transaction.update(userRef, {
+      totalCatches: newTotalCatches,
+      maxSize: newMaxSize,
+      rank: newRank
+    });
   });
-
-  fs.unlinkSync(tempFilePath);
-  fs.unlinkSync(thumbFilePath);
-  return logger.log("Thumbnail generation finished.");
 });
