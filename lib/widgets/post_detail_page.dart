@@ -120,8 +120,7 @@ class _PostDetailCardState extends State<_PostDetailCard> {
       if (mounted && placemarks.isNotEmpty) {
         final Placemark place = placemarks[0];
         setState(() {
-          _address =
-              '${place.administrativeArea ?? ''} ${place.locality ?? ''} ${place.street ?? ''}';
+          // _address = '${place.administrativeArea ?? ''}${place.country ?? ''}';
         });
       }
     } catch (e) {

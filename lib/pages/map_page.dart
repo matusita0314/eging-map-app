@@ -1,14 +1,15 @@
-// lib/map_page.dart (最適化版)
-
 import 'dart:async';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../widgets/common_app_bar.dart';
 import '../models/post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/post_detail_page.dart';
 import 'add_post_page.dart';
+import '../widgets/post_preview_sheet.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -17,82 +18,295 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
+class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   final Completer<GoogleMapController> _controller = Completer();
   static const LatLng _initialPosition = LatLng(35.681236, 139.767125);
   LatLng? _currentPosition;
   bool _isLoading = true;
 
-  // 新しいピン関連の変数
+  // マーカー関連
   Marker? _tappedMarker;
   BitmapDescriptor? _squidIcon;
+  Set<Marker> _markers = {};
 
   // フィルター用の状態変数
   double _minSquidSize = 0;
   double _dateRangeInDays = 7.0;
+  MapType _currentMapType = MapType.normal;
 
-  // 🔥 パフォーマンス改善：Stream、マーカーキャッシュ
+  // 🔥 パフォーマンス改善：Stream、デバウンス、効率化
   StreamSubscription<QuerySnapshot>? _postsSubscription;
-  final Map<String, Marker> _markerCache = {};
-  Query? _currentQuery;
+  final Map<String, Post> _postsCache = {};
+  Timer? _filterDebounceTimer;
+  String? _lastQueryHash;
+
+  // 🔥 フレームレート制御
+  bool _isUpdating = false;
+  final Duration _updateThrottle = const Duration(milliseconds: 100);
+
+  final String _darkMapStyle = '''
+  [
+    {
+      "elementType": "geometry",
+      "stylers": [
+        {
+          "color": "#242f3e"
+        }
+      ]
+    },
+    {
+      "elementType": "labels.text.fill",
+      "stylers": [
+        {
+          "color": "#746855"
+        }
+      ]
+    },
+    {
+      "elementType": "labels.text.stroke",
+      "stylers": [
+        {
+          "color": "#242f3e"
+        }
+      ]
+    },
+    {
+      "featureType": "administrative.locality",
+      "elementType": "labels.text.fill",
+      "stylers": [
+        {
+          "color": "#d59563"
+        }
+      ]
+    },
+    {
+      "featureType": "poi",
+      "elementType": "labels.text.fill",
+      "stylers": [
+        {
+          "color": "#d59563"
+        }
+      ]
+    },
+    {
+      "featureType": "poi.park",
+      "elementType": "geometry",
+      "stylers": [
+        {
+          "color": "#263c3f"
+        }
+      ]
+    },
+    {
+      "featureType": "poi.park",
+      "elementType": "labels.text.fill",
+      "stylers": [
+        {
+          "color": "#6b9a76"
+        }
+      ]
+    },
+    {
+      "featureType": "road",
+      "elementType": "geometry",
+      "stylers": [
+        {
+          "color": "#38414e"
+        }
+      ]
+    },
+    {
+      "featureType": "road",
+      "elementType": "geometry.stroke",
+      "stylers": [
+        {
+          "color": "#212a37"
+        }
+      ]
+    },
+    {
+      "featureType": "road",
+      "elementType": "labels.text.fill",
+      "stylers": [
+        {
+          "color": "#9ca5b3"
+        }
+      ]
+    },
+    {
+      "featureType": "road.highway",
+      "elementType": "geometry",
+      "stylers": [
+        {
+          "color": "#746855"
+        }
+      ]
+    },
+    {
+      "featureType": "road.highway",
+      "elementType": "geometry.stroke",
+      "stylers": [
+        {
+          "color": "#1f2835"
+        }
+      ]
+    },
+    {
+      "featureType": "road.highway",
+      "elementType": "labels.text.fill",
+      "stylers": [
+        {
+          "color": "#f3d19c"
+        }
+      ]
+    },
+    {
+      "featureType": "transit",
+      "elementType": "geometry",
+      "stylers": [
+        {
+          "color": "#2f3948"
+        }
+      ]
+    },
+    {
+      "featureType": "transit.station",
+      "elementType": "labels.text.fill",
+      "stylers": [
+        {
+          "color": "#d59563"
+        }
+      ]
+    },
+    {
+      "featureType": "water",
+      "elementType": "geometry",
+      "stylers": [
+        {
+          "color": "#17263c"
+        }
+      ]
+    },
+    {
+      "featureType": "water",
+      "elementType": "labels.text.fill",
+      "stylers": [
+        {
+          "color": "#515c6d"
+        }
+      ]
+    },
+    {
+      "featureType": "water",
+      "elementType": "labels.text.stroke",
+      "stylers": [
+        {
+          "color": "#17263c"
+        }
+      ]
+    }
+  ]
+  ''';
 
   @override
   void initState() {
     super.initState();
-    // 🔥 Google Maps初期化を最適化
-    _initializeGoogleMaps();
     _loadCustomIcon();
     _getCurrentLocation();
     _initializePostsStream();
   }
 
-  // 🔥 Google Maps初期化の最適化
-  void _initializeGoogleMaps() {
-    // レンダラーの設定を明示的に行う
-    try {
-      // AndroidではTEXTURE_VIEWを使用してパフォーマンス向上
-      if (Theme.of(context).platform == TargetPlatform.android) {
-        // Google Maps SDKの初期化設定
-      }
-    } catch (e) {
-      print('Google Maps初期化エラー: $e');
-    }
-  }
-
   @override
   void dispose() {
     _postsSubscription?.cancel();
+    _filterDebounceTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _loadCustomIcon() async {
     try {
-      final icon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(48, 48)),
+      // ★★★ 目標とするアイコンの横幅（ピクセル単位）★★★
+      // この数値を変更することで、アイコンの大きさを自由に調整できます。
+      // 例：80, 100, 120 など
+      const int targetWidth = 130;
+
+      // 1. アセットから画像の元データをバイトとして読み込む
+      final ByteData byteData = await rootBundle.load(
         'assets/images/squid.png',
       );
+      final Uint8List bytes = byteData.buffer.asUint8List();
+
+      // 2. バイトデータを画像オブジェクトに変換
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: targetWidth, // リサイズ品質向上のためのヒント
+      );
+      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+      final ui.Image originalImage = frameInfo.image;
+
+      // 3. 新しいキャンバスを用意し、指定したサイズで画像を描画
+      final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+      final Canvas canvas = Canvas(pictureRecorder);
+      final Paint paint = Paint()..filterQuality = FilterQuality.high;
+
+      // 元画像の縦横比を維持して描画先のサイズを計算
+      final double aspectRatio = originalImage.width / originalImage.height;
+      final int targetHeight = (targetWidth / aspectRatio).round();
+
+      // 指定したサイズでキャンバスに描画
+      canvas.drawImageRect(
+        originalImage,
+        Rect.fromLTRB(
+          0,
+          0,
+          originalImage.width.toDouble(),
+          originalImage.height.toDouble(),
+        ),
+        Rect.fromLTRB(0, 0, targetWidth.toDouble(), targetHeight.toDouble()),
+        paint,
+      );
+
+      // 4. 再描画した画像をバイトデータに変換
+      final ui.Image resizedImage = await pictureRecorder
+          .endRecording()
+          .toImage(targetWidth, targetHeight);
+      final ByteData? resizedByteData = await resizedImage.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      final Uint8List resizedBytes = resizedByteData!.buffer.asUint8List();
+
+      // 5. リサイズ後のバイトデータからマーカーアイコンを生成
       if (mounted) {
-        setState(() {
-          _squidIcon = icon;
-        });
-        // 🔥 アイコン読み込み完了後にマーカーを更新
-        _updateAllMarkers();
+        _squidIcon = BitmapDescriptor.fromBytes(resizedBytes);
+        _rebuildAllMarkers(); // 既存マーカーも更新
       }
     } catch (e) {
-      print('カスタムアイコンの読み込みに失敗しました: $e');
-      // 🔥 フォールバック用のアイコンを設定
+      print('カスタムアイコンのリサイズと読み込みに失敗しました: $e');
       if (mounted) {
-        setState(() {
-          _squidIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
-        });
+        _squidIcon = BitmapDescriptor.defaultMarkerWithHue(
+          BitmapDescriptor.hueBlue,
+        );
+        _rebuildAllMarkers();
       }
     }
   }
 
-  Query _buildFilteredQuery() {
+  // 🔥 クエリハッシュを生成してストリーム再作成を最小化
+  String _generateQueryHash() {
+    return '${_minSquidSize}_${_dateRangeInDays}';
+  }
+
+  void _initializePostsStream() {
+    final queryHash = _generateQueryHash();
+    if (_lastQueryHash == queryHash) return;
+
+    _lastQueryHash = queryHash;
+    _postsSubscription?.cancel();
+
     final startDate = DateTime.now().subtract(
       Duration(days: _dateRangeInDays.round()),
     );
+
     Query query = FirebaseFirestore.instance
         .collection('posts')
         .where('createdAt', isGreaterThanOrEqualTo: startDate);
@@ -100,68 +314,74 @@ class _MapPageState extends State<MapPage> {
     if (_minSquidSize > 0) {
       query = query.where('squidSize', isGreaterThanOrEqualTo: _minSquidSize);
     }
-    return query;
-  }
 
-  // 🔥 新しいメソッド：Streamの初期化と管理
-  void _initializePostsStream() {
-    _updatePostsStream();
-  }
-
-  void _updatePostsStream() {
-    final newQuery = _buildFilteredQuery();
-    
-    // 🔥 同じクエリの場合は更新しない
-    if (_currentQuery?.toString() == newQuery.toString()) {
-      return;
-    }
-    
-    _currentQuery = newQuery;
-    _postsSubscription?.cancel();
-    
-    _postsSubscription = newQuery.snapshots().listen(
-      (snapshot) {
-        if (mounted) {
-          _updateMarkersFromSnapshot(snapshot);
-        }
-      },
+    _postsSubscription = query.snapshots().listen(
+      _handlePostsSnapshot,
       onError: (error) {
         print('Posts stream error: $error');
       },
     );
   }
 
-  // 🔥 新しいメソッド：スナップショットからマーカーを更新
-  void _updateMarkersFromSnapshot(QuerySnapshot snapshot) {
-    final Set<String> currentPostIds = {};
-    
-    // 新しい/更新されたマーカーを処理
-    for (final doc in snapshot.docs) {
-      final post = Post.fromFirestore(doc);
-      currentPostIds.add(post.id);
-      
-      // 🔥 既存のマーカーと比較して変更がある場合のみ更新
-      if (!_markerCache.containsKey(post.id) || 
-          _shouldUpdateMarker(post)) {
-        _markerCache[post.id] = _createMarkerFromPost(post);
+  // 🔥 スナップショット処理を最適化
+  void _handlePostsSnapshot(QuerySnapshot snapshot) {
+    if (!mounted || _isUpdating) return;
+
+    _isUpdating = true;
+
+    // 🔥 変更のみを処理
+    final changedPosts = <String, Post>{};
+    final deletedPostIds = <String>{};
+
+    for (final change in snapshot.docChanges) {
+      final post = Post.fromFirestore(change.doc);
+
+      switch (change.type) {
+        case DocumentChangeType.added:
+        case DocumentChangeType.modified:
+          changedPosts[post.id] = post;
+          break;
+        case DocumentChangeType.removed:
+          deletedPostIds.add(post.id);
+          break;
       }
     }
-    
-    // 🔥 削除されたマーカーをキャッシュから削除
-    _markerCache.removeWhere((key, value) => !currentPostIds.contains(key));
-    
-    setState(() {
-      // マーカーセットを更新
+
+    // キャッシュ更新
+    _postsCache.addAll(changedPosts);
+    for (final id in deletedPostIds) {
+      _postsCache.remove(id);
+    }
+
+    // マーカー更新
+    _updateMarkersFromCache();
+
+    // 🔥 フレームレート制御
+    Future.delayed(_updateThrottle, () {
+      _isUpdating = false;
     });
   }
 
-  bool _shouldUpdateMarker(Post post) {
-    final existing = _markerCache[post.id];
-    if (existing == null) return true;
-    
-    // 🔥 位置やアイコンが変更されているかチェック
-    return existing.position != post.location ||
-           existing.icon != (_squidIcon ?? BitmapDescriptor.defaultMarker);
+  // 🔥 キャッシュからマーカーを効率的に更新
+  void _updateMarkersFromCache() {
+    if (!mounted) return;
+
+    final newMarkers = <Marker>{};
+
+    for (final post in _postsCache.values) {
+      newMarkers.add(_createMarkerFromPost(post));
+    }
+
+    // タップされたマーカーを追加
+    if (_tappedMarker != null) {
+      newMarkers.add(_tappedMarker!);
+    }
+
+    if (mounted) {
+      setState(() {
+        _markers = newMarkers;
+      });
+    }
   }
 
   Marker _createMarkerFromPost(Post post) {
@@ -169,29 +389,30 @@ class _MapPageState extends State<MapPage> {
       markerId: MarkerId(post.id),
       position: post.location,
       icon: _squidIcon ?? BitmapDescriptor.defaultMarker,
-      infoWindow: InfoWindow(
-        title: 'イカ ${post.squidSize} cm',
-        snippet: 'ヒットエギ: ${post.egiName}',
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => PostDetailPage(post: post),
-            ),
-          );
-        },
-      ),
+      onTap: () => _showPostPreview(post),
     );
   }
 
-  // 🔥 新しいメソッド：全マーカーのアイコン更新
-  void _updateAllMarkers() {
-    for (final entry in _markerCache.entries) {
-      final oldMarker = entry.value;
-      _markerCache[entry.key] = oldMarker.copyWith(
-        iconParam: _squidIcon ?? BitmapDescriptor.defaultMarker,
-      );
+  void _showPostPreview(Post post) {
+    // 既存のタップマーカーを削除
+    if (_tappedMarker != null) {
+      setState(() {
+        _tappedMarker = null;
+      });
     }
-    setState(() {});
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => PostPreviewSheet(post: post),
+    );
+  }
+
+  // 🔥 全マーカーを再構築（アイコン変更時のみ）
+  void _rebuildAllMarkers() {
+    if (!mounted) return;
+    _updateMarkersFromCache();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -201,7 +422,7 @@ class _MapPageState extends State<MapPage> {
         if (mounted) setState(() => _isLoading = false);
         return;
       }
-      
+
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -210,18 +431,17 @@ class _MapPageState extends State<MapPage> {
           return;
         }
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
         if (mounted) setState(() => _isLoading = false);
         return;
       }
-      
-      // 🔥 タイムアウト設定を追加
+
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
       );
-      
+
       if (mounted) {
         setState(() {
           _currentPosition = LatLng(position.latitude, position.longitude);
@@ -254,11 +474,15 @@ class _MapPageState extends State<MapPage> {
 
   void _onMapTapped(LatLng location) {
     setState(() {
+      _markers.removeWhere(
+        (m) => m.markerId == const MarkerId('tapped_location'),
+      );
       _tappedMarker = Marker(
         markerId: const MarkerId('tapped_location'),
         position: location,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
       );
+      _markers.add(_tappedMarker!);
     });
   }
 
@@ -277,23 +501,93 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  // 🔥 フィルター変更時の処理を最適化
-  void _updateFilter() {
-    // 🔥 デバウンス処理を追加してもよい
-    _updatePostsStream();
+  // 🔥 デバウンス付きフィルター更新
+  void _updateFilterWithDebounce() {
+    _filterDebounceTimer?.cancel();
+    _filterDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _initializePostsStream();
+    });
+  }
+
+  void _toggleMapType() {
+    setState(() {
+      _currentMapType = _currentMapType == MapType.normal
+          ? MapType.satellite
+          : MapType.normal;
+    });
+  }
+
+  void _showMapTypeDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('地図タイプを選択'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildMapTypeOption(MapType.normal, '通常', Icons.map),
+              _buildMapTypeOption(MapType.satellite, '衛星', Icons.satellite),
+              _buildMapTypeOption(MapType.terrain, '地形', Icons.terrain),
+              _buildMapTypeOption(MapType.hybrid, 'ハイブリッド', Icons.layers),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMapTypeOption(MapType type, String title, IconData icon) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      trailing: _currentMapType == type
+          ? const Icon(Icons.check, color: Colors.blue)
+          : null,
+      onTap: () {
+        setState(() {
+          _currentMapType = type;
+        });
+        Navigator.of(context).pop();
+      },
+    );
+  }
+
+  Future<void> _onMapCreated(GoogleMapController controller) async {
+    if (!_controller.isCompleted) {
+      _controller.complete(controller);
+    }
+
+    try {
+      await controller.setMapStyle(_darkMapStyle);
+    } catch (e) {
+      print('マップスタイルの適用に失敗しました: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CommonAppBar(title: 'マップ'),
+      appBar: CommonAppBar(
+        title: 'マップ',
+        actions: [
+          IconButton(
+            icon: Icon(
+              _currentMapType == MapType.satellite
+                  ? Icons.satellite
+                  : Icons.map,
+            ),
+            onPressed: _showMapTypeDialog,
+            tooltip: '地図タイプを変更',
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _onAddPostButtonPressed,
         child: const Icon(Icons.add),
       ),
       body: Stack(
         children: [
-          // 🔥 StreamBuilderを削除し、直接GoogleMapを使用
           _isLoading
               ? const Center(child: CircularProgressIndicator())
               : GoogleMap(
@@ -301,20 +595,14 @@ class _MapPageState extends State<MapPage> {
                     target: _currentPosition ?? _initialPosition,
                     zoom: 12.0,
                   ),
-                  onMapCreated: (GoogleMapController controller) {
-                    if (!_controller.isCompleted) {
-                      _controller.complete(controller);
-                    }
-                  },
+                  onMapCreated: _onMapCreated,
                   onTap: _onMapTapped,
-                  markers: _buildMarkerSet(),
+                  markers: _markers,
                   myLocationEnabled: true,
                   myLocationButtonEnabled: true,
-                  // 🔥 地図の描画最適化設定
-                  mapType: MapType.normal,
+                  mapType: _currentMapType,
                   trafficEnabled: false,
                   buildingsEnabled: false,
-                  // 🔥 フレーム同期問題を軽減
                   zoomGesturesEnabled: true,
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
@@ -322,25 +610,29 @@ class _MapPageState extends State<MapPage> {
                   rotateGesturesEnabled: false,
                   scrollGesturesEnabled: true,
                   tiltGesturesEnabled: false,
-                  // 🔥 フレームレート制限
-                  onCameraIdle: () {
-                    // カメラ移動完了後の処理
-                  },
                 ),
           _buildFilterChips(),
           _buildDateRangeSlider(),
+          _buildMapTypeButton(),
         ],
       ),
     );
   }
 
-  // 🔥 新しいメソッド：マーカーセットを構築
-  Set<Marker> _buildMarkerSet() {
-    final Set<Marker> markers = Set.from(_markerCache.values);
-    if (_tappedMarker != null) {
-      markers.add(_tappedMarker!);
-    }
-    return markers;
+  Widget _buildMapTypeButton() {
+    return Positioned(
+      top: 10,
+      right: 10,
+      child: FloatingActionButton(
+        mini: true,
+        onPressed: _toggleMapType,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black54,
+        child: Icon(
+          _currentMapType == MapType.satellite ? Icons.map : Icons.satellite,
+        ),
+      ),
+    );
   }
 
   Widget _buildFilterChips() {
@@ -367,10 +659,7 @@ class _MapPageState extends State<MapPage> {
       child: Card(
         elevation: 4,
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 16.0,
-            vertical: 8.0,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -385,7 +674,7 @@ class _MapPageState extends State<MapPage> {
                   setState(() {
                     _dateRangeInDays = value;
                   });
-                  _updateFilter(); // 🔥 フィルター更新
+                  _updateFilterWithDebounce();
                 },
               ),
             ],
@@ -430,7 +719,7 @@ class _MapPageState extends State<MapPage> {
                         onPressed: () {
                           setState(() => _minSquidSize = 0);
                           Navigator.pop(context);
-                          _updateFilter(); // 🔥 フィルター更新
+                          _updateFilterWithDebounce();
                         },
                       ),
                       ElevatedButton(
@@ -438,7 +727,7 @@ class _MapPageState extends State<MapPage> {
                         onPressed: () {
                           setState(() {});
                           Navigator.pop(context);
-                          _updateFilter(); // 🔥 フィルター更新
+                          _updateFilterWithDebounce();
                         },
                       ),
                     ],
