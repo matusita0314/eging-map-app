@@ -142,9 +142,9 @@ class _TodayTimelineState extends State<_TodayTimeline> {
   @override
   void initState() {
     super.initState();
-    
+
     // ▼▼▼ まず関連データを一度だけ取得する ▼▼▼
-    _fetchRelatedData(); 
+    _fetchRelatedData();
 
     // ▼▼▼ 投稿のリアルタイム監視を開始 ▼▼▼
     final now = DateTime.now();
@@ -157,7 +157,9 @@ class _TodayTimelineState extends State<_TodayTimeline> {
 
     _postsSubscription = stream.listen((snapshot) {
       print("◉ 投稿データを受信 (件数: ${snapshot.docs.length})");
-      final newPosts = snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList();
+      final newPosts = snapshot.docs
+          .map((doc) => Post.fromFirestore(doc))
+          .toList();
       if (mounted) {
         setState(() {
           _posts = newPosts;
@@ -175,11 +177,22 @@ class _TodayTimelineState extends State<_TodayTimeline> {
 
   // ▼▼▼ 「いいね」の読み込みも効率化された最終版のメソッド ▼▼▼
   Future<void> _fetchRelatedData() async {
-    
     final futures = [
-      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('following').get(),
-      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('saved_posts').get(),
-      FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).collection('liked_posts').get(), // 新しいデータ構造を読む
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('following')
+          .get(),
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('saved_posts')
+          .get(),
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('liked_posts')
+          .get(), // 新しいデータ構造を読む
     ];
 
     final results = await Future.wait(futures);
@@ -211,7 +224,7 @@ class _TodayTimelineState extends State<_TodayTimeline> {
         crossAxisCount: 2,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
-        childAspectRatio: 1.0,
+        childAspectRatio: 0.75,
       ),
       itemCount: _posts.length,
       itemBuilder: (context, index) {

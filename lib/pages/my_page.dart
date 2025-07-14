@@ -433,7 +433,7 @@ class _MyPageState extends State<MyPage> {
         crossAxisCount: 2,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
-        childAspectRatio: 1.0,
+        childAspectRatio: 0.75,
       ),
       itemCount: _posts.length,
       itemBuilder: (context, index) {

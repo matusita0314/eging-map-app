@@ -115,9 +115,9 @@ class _RankingPageState extends State<RankingPage> {
         // --- 1位のカード ---
         Padding(
           padding: const EdgeInsets.only(bottom: 8.0),
-          // ▼▼▼ AspectRatioでラップして、高さを画面幅と同じに制約する ▼▼▼
           child: AspectRatio(
-            aspectRatio: 1.6, // 縦横比を1:1（正方形）に
+            // ▼▼▼ 変更点: 1位カードのアスペクト比を調整 ▼▼▼
+            aspectRatio: 1.1, // 少し縦長に設定
             child: PostGridCard(
               post: firstPost,
               rank: 1,
@@ -137,7 +137,8 @@ class _RankingPageState extends State<RankingPage> {
               crossAxisCount: 2,
               crossAxisSpacing: 8,
               mainAxisSpacing: 8,
-              childAspectRatio: 1.0,
+              // ▼▼▼ 変更点: 2位以下のカードのアスペクト比を調整 ▼▼▼
+              childAspectRatio: 0.75, // 少し縦長に設定
             ),
             itemCount: otherPosts.length,
             itemBuilder: (context, index) {

@@ -1,3 +1,5 @@
+// lib/widgets/post_grid_card.dart (修正版)
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,7 +10,6 @@ import '../pages/post_detail_page.dart';
 class PostGridCard extends StatefulWidget {
   final Post post;
   final int? rank;
-  // ▼▼▼ 親から状態を受け取るためのプロパティを追加 ▼▼▼
   final bool isLikedByCurrentUser;
   final bool isSavedByCurrentUser;
   final bool isFollowingAuthor;
@@ -17,7 +18,6 @@ class PostGridCard extends StatefulWidget {
     super.key,
     required this.post,
     this.rank,
-    // ▼▼▼ コンストラクタで状態を受け取る ▼▼▼
     required this.isLikedByCurrentUser,
     required this.isSavedByCurrentUser,
     required this.isFollowingAuthor,
@@ -30,7 +30,6 @@ class PostGridCard extends StatefulWidget {
 class _PostGridCardState extends State<PostGridCard> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
 
-  // ▼▼▼ 親から渡された初期状態で変数を初期化 ▼▼▼
   late bool _isLiked;
   late bool _isSaved;
   late bool _isFollowing;
@@ -39,37 +38,24 @@ class _PostGridCardState extends State<PostGridCard> {
   @override
   void initState() {
     super.initState();
-    // ▼▼▼ Stateの初期化を、親から渡された値で行う ▼▼▼
     _isLiked = widget.isLikedByCurrentUser;
     _isSaved = widget.isSavedByCurrentUser;
     _isFollowing = widget.isFollowingAuthor;
     _likeCount = widget.post.likeCount;
-    // ▼▼▼ これで、このウィジェット内でのFirestoreへの問い合わせは不要になった ▼▼▼
   }
 
-  // ▼▼▼ 以下、いいね・保存・フォローの「実行」メソッドは変更なし ▼▼▼
-
+  // --- いいね、保存、フォローの各メソッドは変更なし ---
   Future<void> _handleSave() async {
-    // UIを即時反映
-    setState(() {
-      _isSaved = !_isSaved;
-    });
-
-    final savedDocRef = FirebaseFirestore.instance
+    setState(() => _isSaved = !_isSaved);
+    final ref = FirebaseFirestore.instance
         .collection('users')
         .doc(_currentUser.uid)
         .collection('saved_posts')
         .doc(widget.post.id);
-
-    if (_isSaved) {
-      await savedDocRef.set({'savedAt': Timestamp.now()});
-    } else {
-      await savedDocRef.delete();
-    }
+    _isSaved ? await ref.set({'savedAt': Timestamp.now()}) : await ref.delete();
   }
 
   Future<void> _handleLike() async {
-    // UIを即時反映
     setState(() {
       _isLiked ? _likeCount-- : _likeCount++;
       _isLiked = !_isLiked;
@@ -78,40 +64,24 @@ class _PostGridCardState extends State<PostGridCard> {
     final postRef = FirebaseFirestore.instance
         .collection('posts')
         .doc(widget.post.id);
-
-    // ▼▼▼ 新しい「いいね」の保存場所を参照 ▼▼▼
     final likedPostRef = FirebaseFirestore.instance
         .collection('users')
         .doc(_currentUser.uid)
-        .collection('liked_posts') // users/{userID}/liked_posts/
+        .collection('liked_posts')
         .doc(widget.post.id);
-
-    // ▼▼▼ バッチ処理で2つの書き込みを同時に行う ▼▼▼
     final batch = FirebaseFirestore.instance.batch();
 
     if (_isLiked) {
-      // 新しい構造に「いいね」を記録
       batch.set(likedPostRef, {'likedAt': Timestamp.now()});
-      // 投稿のlikeCountを増やす
       batch.update(postRef, {'likeCount': FieldValue.increment(1)});
     } else {
-      // 新しい構造から「いいね」を削除
       batch.delete(likedPostRef);
-      // 投稿のlikeCountを減らす
       batch.update(postRef, {'likeCount': FieldValue.increment(-1)});
     }
-
-    // バッチ処理を実行
-    try {
-      await batch.commit();
-    } catch (e) {
-      // エラーが発生した場合はUIを元に戻すなどの処理も検討できる
-      print('いいね処理のエラー: $e');
-    }
+    await batch.commit();
   }
 
   Future<void> _handleFollow() async {
-    // UIを即時反映
     setState(() => _isFollowing = !_isFollowing);
     final batch = FirebaseFirestore.instance.batch();
     final myFollowingRef = FirebaseFirestore.instance
@@ -138,6 +108,9 @@ class _PostGridCardState extends State<PostGridCard> {
   @override
   Widget build(BuildContext context) {
     final isMyPost = _currentUser.uid == widget.post.userId;
+    // ▼▼▼ 変更点: 画面サイズを取得 ▼▼▼
+    final screenSize = MediaQuery.of(context).size;
+    final isLargeCard = widget.rank == 1; // 1位のカードかどうかを判定
 
     return GestureDetector(
       onTap: () {
@@ -154,48 +127,57 @@ class _PostGridCardState extends State<PostGridCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ▼▼▼ 変更点: 画像表示部分をExpandedでラップし、比率を確保 ▼▼▼
             Expanded(
+              flex: 3, // 画像エリアの比率を3に設定
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  // ▼▼▼ 変更点: サムネイルURLを優先的に使用 ▼▼▼
                   Image.network(
-                    widget.post.thumbnailUrl ?? widget.post.imageUrl,
+                    // サムネイルがあればそれを、なければ元の画像URLを使う
+                    widget.post.thumbnailUrl.isNotEmpty
+                        ? widget.post.thumbnailUrl
+                        : widget.post.imageUrl,
                     fit: BoxFit.cover,
-                    // 画像読み込み中にエラーが発生した場合の表示
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.error, color: Colors.grey);
-                    },
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Icon(Icons.error, color: Colors.grey),
                   ),
+                  // --- 投稿者情報 ---
                   Positioned(
-                    bottom: 20,
-                    left: 8,
+                    bottom: 3,
+                    left: 3,
                     child: GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                MyPage(userId: widget.post.userId),
-                          ),
-                        );
-                      },
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              MyPage(userId: widget.post.userId),
+                        ),
+                      ),
                       child: Row(
                         children: [
                           CircleAvatar(
-                            radius: 20,
+                            // ▼▼▼ 変更点: サイズを画面幅に応じて調整 ▼▼▼
+                            radius: isLargeCard ? 20 : 14,
                             backgroundImage: widget.post.userPhotoUrl.isNotEmpty
                                 ? NetworkImage(widget.post.userPhotoUrl)
                                 : null,
                             child: widget.post.userPhotoUrl.isEmpty
-                                ? const Icon(Icons.person, size: 12)
+                                ? Icon(
+                                    Icons.person,
+                                    size: isLargeCard ? 24 : 18,
+                                  )
                                 : null,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             widget.post.userName,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
-                              shadows: [
+                              // ▼▼▼ 変更点: サイズを画面幅に応じて調整 ▼▼▼
+                              fontSize: isLargeCard ? 16 : 11,
+                              shadows: const [
                                 Shadow(color: Colors.black, blurRadius: 4),
                               ],
                             ),
@@ -204,168 +186,189 @@ class _PostGridCardState extends State<PostGridCard> {
                       ),
                     ),
                   ),
-                  // ▼▼▼ _isLoadingFollowの判定を削除 ▼▼▼
+                  // --- フォローボタン ---
                   if (!isMyPost)
                     Positioned(
                       bottom: 8,
                       right: 8,
-                      child: SizedBox(
-                        height: 40,
-                        child: ElevatedButton(
-                          onPressed: _handleFollow,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isFollowing
-                                ? Colors.white.withOpacity(0.9)
-                                : Colors.blue,
-                            foregroundColor: _isFollowing
-                                ? Colors.blue
-                                : Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                              side: BorderSide(
-                                color: Colors.blue.withOpacity(0.5),
-                              ),
+                      child: ElevatedButton(
+                        onPressed: _handleFollow,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isFollowing
+                              ? Colors.white.withOpacity(0.9)
+                              : Colors.blue,
+                          foregroundColor: _isFollowing
+                              ? Colors.blue
+                              : Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            side: BorderSide(
+                              color: Colors.blue.withOpacity(0.5),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            elevation: 1,
                           ),
-                          child: Text(
-                            _isFollowing ? 'フォロー中' : '+ フォロー',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          // ▼▼▼ 変更点: paddingを調整 ▼▼▼
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          tapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap, // ボタンの高さを詰める
+                          minimumSize: const Size(0, 30), // 最小高さを設定
+                        ),
+                        child: Text(
+                          _isFollowing ? 'フォロー中' : '+ フォロー',
+                          style: TextStyle(
+                            // ▼▼▼ 変更点: サイズを調整 ▼▼▼
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
+                  // --- ランキング表示 ---
                   if (widget.rank != null)
                     Positioned(
                       top: 4,
                       left: 4,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
+                          horizontal: 8,
+                          vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withOpacity(0.7),
                           borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white, width: 1.5),
                         ),
                         child: Text(
                           '${widget.rank}',
                           style: const TextStyle(
                             color: Colors.white,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'イカ ${widget.post.squidSize} cm',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'ヒットエギ: ${widget.post.egiName}',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(
-                    height: 22,
-                    child:
-                        (widget.post.caption != null &&
-                            widget.post.caption!.isNotEmpty)
-                        ? Padding(
-                            padding: const EdgeInsets.only(top: 4.0),
-                            child: Text(
-                              '📢 ${widget.post.caption!}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade700,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: ClipOval(
+                      // インクエフェクト（波紋）が円形になるようにします
+                      child: Material(
+                        color: Colors.grey.withOpacity(0.7), // 背景色
+                        child: InkWell(
+                          onTap: _handleSave,
+                          child: Padding(
+                            // ★★★ このpaddingで円の大きさが変わります ★★★
+                            padding: const EdgeInsets.all(5), // この数値を変更してください
+
+                            child: Icon(
+                              _isSaved ? Icons.bookmark : Icons.bookmark_border,
+                              color: _isSaved
+                                  ? Colors.lightBlueAccent
+                                  : Colors.white,
+                              size: 24, // アイコン自体の大きさ
                             ),
-                          )
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 8, 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: Icon(
-                      _isLiked ? Icons.favorite : Icons.favorite_border,
-                      color: _isLiked ? Colors.red : Colors.grey,
-                      size: 25,
-                    ),
-                    onPressed: _handleLike,
-                  ),
-                  Text('$_likeCount', style: const TextStyle(fontSize: 12)),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(
-                      Icons.chat_bubble_outline,
-                      color: Colors.grey,
-                      size: 25,
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => PostDetailPage(
-                            post: widget.post,
-                            scrollToComments: true,
                           ),
                         ),
-                      );
-                    },
-                  ),
-                  Text(
-                    '${widget.post.commentCount}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: Icon(
-                      _isSaved ? Icons.bookmark : Icons.bookmark_border,
-                      color: _isSaved ? Colors.blue : Colors.grey,
-                      size: 25,
+                      ),
                     ),
-                    onPressed: _handleSave,
                   ),
                 ],
+              ),
+            ),
+            // ▼▼▼ 変更点: 情報表示部分をExpandedでラップし、比率を確保 ▼▼▼
+            Expanded(
+              flex: 2, // 情報エリアの比率を2に設定
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly, // 要素を均等に配置
+                  children: [
+                    // --- 釣果情報 ---
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'イカ ${widget.post.squidSize} cm',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: isLargeCard ? 16 : 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'ヒットエギ: ${widget.post.egiName}',
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            fontSize: isLargeCard ? 13 : 11,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                    // --- アイコンボタン ---
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _buildActionButton(
+                          _isLiked ? Icons.favorite : Icons.favorite_border,
+                          _isLiked ? Colors.red : Colors.grey,
+                          _likeCount,
+                          _handleLike,
+                        ),
+                        const SizedBox(width: 0), // 少し間隔を広げる
+                        _buildActionButton(
+                          Icons.chat_bubble_outline,
+                          Colors.grey,
+                          widget.post.commentCount,
+                          () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => PostDetailPage(
+                                  post: widget.post,
+                                  scrollToComments: true,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ▼▼▼ 追加: アイコンボタンを生成するヘルパーメソッド ▼▼▼
+  Widget _buildActionButton(
+    IconData icon,
+    Color color,
+    int? count,
+    VoidCallback onPressed,
+  ) {
+    return Row(
+      children: [
+        IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          icon: Icon(icon, color: color, size: 22),
+          onPressed: onPressed,
+        ),
+        if (count != null)
+          Text(
+            '$count',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+      ],
     );
   }
 }
