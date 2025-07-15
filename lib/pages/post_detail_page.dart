@@ -1,13 +1,15 @@
+// lib/pages/post_detail_page.dart (初期状態)
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/post_model.dart';
-import 'my_page.dart';
+import '../pages/account.dart';
 import '../models/comment_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'edit_post_page.dart';
+import '../pages/edit_post_page.dart';
 
 class PostDetailPage extends StatelessWidget {
   final Post post;
@@ -29,7 +31,6 @@ class PostDetailPage extends StatelessWidget {
           if (post.userId == currentUserId)
             PopupMenuButton<String>(
               onSelected: (value) {
-                // `context`を正しく参照するために一手間加える
                 final state = (context as Element)
                     .findAncestorStateOfType<_PostDetailCardState>();
                 if (state == null) return;
@@ -121,7 +122,7 @@ class _PostDetailCardState extends State<_PostDetailCard> {
         final Placemark place = placemarks[0];
         setState(() {
           _address =
-              '${place.administrativeArea ?? ''} ${place.locality ?? ''} ${place.street ?? ''}';
+              '${place.country ?? ''}${' '}${place.administrativeArea ?? ''}';
         });
       }
     } catch (e) {
@@ -261,10 +262,27 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                     ),
                   ),
                 ),
-                Image.network(
-                  widget.post.imageUrl,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
+                AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: Container(
+                    width: double.infinity,
+                    color: Colors.grey.shade200,
+                    child: Image.network(
+                      widget.post.imageUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator());
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.error,
+                          color: Colors.grey,
+                          size: 40,
+                        );
+                      },
+                    ),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -410,7 +428,6 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: 24),
-                        // 編集ボタン
                         ElevatedButton.icon(
                           icon: const Icon(Icons.edit),
                           label: const Text('この投稿を編集する'),
@@ -432,7 +449,6 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                           },
                         ),
                         const SizedBox(height: 16),
-                        // 削除ボタン
                         ElevatedButton.icon(
                           icon: const Icon(Icons.delete_forever),
                           label: const Text('この投稿を削除する'),
@@ -476,16 +492,27 @@ class _PostDetailCardState extends State<_PostDetailCard> {
   }
 
   Widget _buildInfoRow(IconData icon, String label, String? value) {
-    if (value == null || value.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 8.0), // 見やすいように少し余白を調整
       child: Row(
         children: [
           Icon(icon, color: Colors.grey.shade600, size: 20),
-          const SizedBox(width: 8),
-          Text(label, style: TextStyle(color: Colors.grey.shade700)),
+          const SizedBox(width: 16),
+          Text(label, style: TextStyle(color: Colors.grey.shade800)),
           const Spacer(),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            // 値がnullでも空でもなければその値を、そうでなければ「情報なし」を表示
+            (value != null && value.isNotEmpty) ? value : '情報なし',
+            style: (value != null && value.isNotEmpty)
+                // 値がある場合のスタイル
+                ? const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)
+                // 値がない場合のスタイル
+                : TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                  ),
+          ),
         ],
       ),
     );

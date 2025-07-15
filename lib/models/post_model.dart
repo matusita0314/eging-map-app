@@ -1,3 +1,5 @@
+// lib/models/post_model.dart (初期状態)
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -10,20 +12,17 @@ class Post {
   final String thumbnailUrl;
   final DateTime createdAt;
   final LatLng location;
-
-  // --- ▼▼▼ 新しく追加・変更するフィールド ▼▼▼ ---
-  final String weather; // 天気
-  final double? airTemperature; // 気温
-  final double? waterTemperature; // 水温
-  final String? caption; // キャプション
-  final double squidSize; // サイズ(cm)
-  final double? weight; // 重さ(g) ※任意なので nullable
-  final String egiName; // エギ・ルアー名
-  final String? egiMaker; // エギ・ルアーメーカー ※任意
-  final String? tackleRod; // ロッド ※任意
-  final String? tackleReel; // リール ※任意
-  final String? tackleLine; // ライン ※任意
-
+  final String weather;
+  final double? airTemperature;
+  final double? waterTemperature;
+  final String? caption;
+  final double squidSize;
+  final double? weight;
+  final String egiName;
+  final String? egiMaker;
+  final String? tackleRod;
+  final String? tackleReel;
+  final String? tackleLine;
   final int likeCount;
   final int commentCount;
 
@@ -65,21 +64,17 @@ class Post {
       thumbnailUrl: data['thumbnailUrl'] ?? '',
       createdAt: timestamp.toDate(),
       location: LatLng(point.latitude, point.longitude),
-
-      // --- ▼▼▼ 新しいフィールドの読み込み ▼▼▼ ---
       weather: data['weather'] ?? '',
       airTemperature: (data['airTemperature'])?.toDouble(),
       waterTemperature: (data['waterTemperature'])?.toDouble(),
       caption: data['caption'],
       squidSize: (data['squidSize'] ?? 0.0).toDouble(),
-      weight: (data['weight'])?.toDouble(), // nullableなので安全にキャスト
-      egiName: data['egiName'] ?? (data['egiType'] ?? ''), // 以前のegiTypeも考慮
+      weight: (data['weight'])?.toDouble(),
+      egiName: data['egiName'] ?? (data['egiType'] ?? ''),
       egiMaker: data['egiMaker'],
       tackleRod: data['tackleRod'],
       tackleReel: data['tackleReel'],
       tackleLine: data['tackleLine'],
-
-      // --- ▲▲▲ ここまで ▲▲▲ ---
       likeCount: data['likeCount'] ?? 0,
       commentCount: data['commentCount'] ?? 0,
     );

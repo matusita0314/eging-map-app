@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../pages/my_page.dart';
+import 'account.dart';
 
 // 表示するリストの種類（フォロワーかフォロー中か）
 enum FollowListType { followers, following }

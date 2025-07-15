@@ -1,5 +1,3 @@
-// lib/pages/my_page.dart (最終確定版)
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -44,7 +42,7 @@ class _MyPageState extends State<MyPage> {
 
     _postsSubscription = stream.listen((snapshot) {
       // ▼▼▼ ご要望のログ出力を追加 ▼▼▼
-      print("◉ マイページの投稿データを受信 (件数: ${snapshot.docs.length})");
+      print("◉ アカウントの投稿データを受信 (件数: ${snapshot.docs.length})");
 
       if (mounted) {
         setState(() {

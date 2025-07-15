@@ -1,5 +1,3 @@
-// functions/index.js (リージョン指定を追加した最終版)
-
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {onObjectFinalized} = require("firebase-functions/v2/storage");
 const {initializeApp} = require("firebase-admin/app");

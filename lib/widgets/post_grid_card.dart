@@ -1,10 +1,10 @@
-// lib/widgets/post_grid_card.dart (修正版)
+// lib/widgets/post_grid_card.dart (レイアウト修正版)
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/post_model.dart';
-import '../pages/my_page.dart';
+import '../pages/account.dart';
 import '../pages/post_detail_page.dart';
 
 class PostGridCard extends StatefulWidget {
@@ -108,9 +108,7 @@ class _PostGridCardState extends State<PostGridCard> {
   @override
   Widget build(BuildContext context) {
     final isMyPost = _currentUser.uid == widget.post.userId;
-    // ▼▼▼ 変更点: 画面サイズを取得 ▼▼▼
-    final screenSize = MediaQuery.of(context).size;
-    final isLargeCard = widget.rank == 1; // 1位のカードかどうかを判定
+    final isLargeCard = widget.rank == 1;
 
     return GestureDetector(
       onTap: () {
@@ -127,15 +125,12 @@ class _PostGridCardState extends State<PostGridCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ▼▼▼ 変更点: 画像表示部分をExpandedでラップし、比率を確保 ▼▼▼
             Expanded(
-              flex: 3, // 画像エリアの比率を3に設定
+              flex: 3,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // ▼▼▼ 変更点: サムネイルURLを優先的に使用 ▼▼▼
                   Image.network(
-                    // サムネイルがあればそれを、なければ元の画像URLを使う
                     widget.post.thumbnailUrl.isNotEmpty
                         ? widget.post.thumbnailUrl
                         : widget.post.imageUrl,
@@ -143,10 +138,9 @@ class _PostGridCardState extends State<PostGridCard> {
                     errorBuilder: (context, error, stackTrace) =>
                         const Icon(Icons.error, color: Colors.grey),
                   ),
-                  // --- 投稿者情報 ---
                   Positioned(
-                    bottom: 3,
-                    left: 3,
+                    bottom: 8,
+                    left: 8,
                     child: GestureDetector(
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
@@ -157,15 +151,14 @@ class _PostGridCardState extends State<PostGridCard> {
                       child: Row(
                         children: [
                           CircleAvatar(
-                            // ▼▼▼ 変更点: サイズを画面幅に応じて調整 ▼▼▼
-                            radius: isLargeCard ? 20 : 14,
+                            radius: isLargeCard ? 20 : 16,
                             backgroundImage: widget.post.userPhotoUrl.isNotEmpty
                                 ? NetworkImage(widget.post.userPhotoUrl)
                                 : null,
                             child: widget.post.userPhotoUrl.isEmpty
                                 ? Icon(
                                     Icons.person,
-                                    size: isLargeCard ? 24 : 18,
+                                    size: isLargeCard ? 24 : 20,
                                   )
                                 : null,
                           ),
@@ -175,8 +168,7 @@ class _PostGridCardState extends State<PostGridCard> {
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
-                              // ▼▼▼ 変更点: サイズを画面幅に応じて調整 ▼▼▼
-                              fontSize: isLargeCard ? 16 : 11,
+                              fontSize: isLargeCard ? 16 : 14,
                               shadows: const [
                                 Shadow(color: Colors.black, blurRadius: 4),
                               ],
@@ -186,7 +178,6 @@ class _PostGridCardState extends State<PostGridCard> {
                       ),
                     ),
                   ),
-                  // --- フォローボタン ---
                   if (!isMyPost)
                     Positioned(
                       bottom: 8,
@@ -206,26 +197,22 @@ class _PostGridCardState extends State<PostGridCard> {
                               color: Colors.blue.withOpacity(0.5),
                             ),
                           ),
-                          // ▼▼▼ 変更点: paddingを調整 ▼▼▼
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 4,
                           ),
-                          tapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap, // ボタンの高さを詰める
-                          minimumSize: const Size(0, 30), // 最小高さを設定
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          minimumSize: const Size(0, 30),
                         ),
                         child: Text(
                           _isFollowing ? 'フォロー中' : '+ フォロー',
-                          style: TextStyle(
-                            // ▼▼▼ 変更点: サイズを調整 ▼▼▼
+                          style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
-                  // --- ランキング表示 ---
                   if (widget.rank != null)
                     Positioned(
                       top: 4,
@@ -250,44 +237,39 @@ class _PostGridCardState extends State<PostGridCard> {
                         ),
                       ),
                     ),
+                  // ▼▼▼ 変更点: 保存ボタンを画像の右上に配置 ▼▼▼
                   Positioned(
-                    top: 4,
-                    right: 4,
-                    child: ClipOval(
-                      // インクエフェクト（波紋）が円形になるようにします
-                      child: Material(
-                        color: Colors.grey.withOpacity(0.7), // 背景色
-                        child: InkWell(
-                          onTap: _handleSave,
-                          child: Padding(
-                            // ★★★ このpaddingで円の大きさが変わります ★★★
-                            padding: const EdgeInsets.all(5), // この数値を変更してください
-
-                            child: Icon(
-                              _isSaved ? Icons.bookmark : Icons.bookmark_border,
-                              color: _isSaved
-                                  ? Colors.lightBlueAccent
-                                  : Colors.white,
-                              size: 24, // アイコン自体の大きさ
-                            ),
-                          ),
+                    top: 1,
+                    right: 1,
+                    child: Material(
+                      color: Colors.grey.withOpacity(0.7),
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: IconButton(
+                        padding: const EdgeInsets.all(0), // 内側の余白を調整
+                        constraints: const BoxConstraints(),
+                        icon: Icon(
+                          _isSaved ? Icons.bookmark : Icons.bookmark_border,
+                          color: _isSaved
+                              ? Colors.lightBlueAccent
+                              : Colors.white,
+                          size: 26, // アイコンサイズを少し調整
                         ),
+                        onPressed: _handleSave,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            // ▼▼▼ 変更点: 情報表示部分をExpandedでラップし、比率を確保 ▼▼▼
             Expanded(
-              flex: 2, // 情報エリアの比率を2に設定
+              flex: 2,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly, // 要素を均等に配置
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // --- 釣果情報 ---
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -310,7 +292,7 @@ class _PostGridCardState extends State<PostGridCard> {
                         ),
                       ],
                     ),
-                    // --- アイコンボタン ---
+                    // ▼▼▼ 変更点: Rowの配置を MainAxisAlignment.end に変更して右詰めにする ▼▼▼
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -320,7 +302,7 @@ class _PostGridCardState extends State<PostGridCard> {
                           _likeCount,
                           _handleLike,
                         ),
-                        const SizedBox(width: 0), // 少し間隔を広げる
+                        const SizedBox(width: 12), // 少し間隔を広げる
                         _buildActionButton(
                           Icons.chat_bubble_outline,
                           Colors.grey,
@@ -348,7 +330,6 @@ class _PostGridCardState extends State<PostGridCard> {
     );
   }
 
-  // ▼▼▼ 追加: アイコンボタンを生成するヘルパーメソッド ▼▼▼
   Widget _buildActionButton(
     IconData icon,
     Color color,
@@ -363,10 +344,14 @@ class _PostGridCardState extends State<PostGridCard> {
           icon: Icon(icon, color: color, size: 22),
           onPressed: onPressed,
         ),
+        // ▼▼▼ 変更点: 保存ボタンにはカウントがないので、nullの場合は何も表示しない ▼▼▼
         if (count != null)
-          Text(
-            '$count',
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          Padding(
+            padding: const EdgeInsets.only(left: 2.0),
+            child: Text(
+              '$count',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ),
       ],
     );

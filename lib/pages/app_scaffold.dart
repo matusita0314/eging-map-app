@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'ranking_page.dart';
 import 'timeline_page.dart';
 import 'map_page.dart';
-import 'my_page.dart';
+import 'account.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'tournament_page.dart';
 
@@ -51,7 +51,7 @@ class _AppScaffoldState extends State<AppScaffold> {
           BottomNavigationBarItem(icon: Icon(Icons.map), label: 'マップ'),
           BottomNavigationBarItem(icon: Icon(Icons.emoji_events), label: '大会'),
           BottomNavigationBarItem(icon: Icon(Icons.timeline), label: 'タイムライン'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'マイページ'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'アカウント'),
         ],
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
