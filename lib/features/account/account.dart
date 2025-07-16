@@ -192,21 +192,6 @@ class _MyPageState extends State<MyPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
         children: [
-          // 「戻る」ボタン
-          Expanded(
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('戻る'),
-              onPressed: () => Navigator.of(context).pop(),
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-
           // 自分のプロフィールの場合は「編集」、他人の場合は「チャット」ボタン
           if (isCurrentUser)
             Expanded(
