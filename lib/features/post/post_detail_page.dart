@@ -1,15 +1,14 @@
-// lib/pages/post_detail_page.dart (初期状態)
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/post_model.dart';
-import '../pages/account.dart';
-import '../models/comment_model.dart';
+import '../../models/post_model.dart';
+import '../account/account.dart';
+import '../../models/comment_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import '../pages/edit_post_page.dart';
+import 'edit_post_page.dart';
 
 class PostDetailPage extends StatelessWidget {
   final Post post;

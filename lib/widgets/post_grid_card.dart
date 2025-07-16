@@ -1,11 +1,9 @@
-// lib/widgets/post_grid_card.dart (レイアウト修正版)
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/post_model.dart';
-import '../pages/account.dart';
-import '../pages/post_detail_page.dart';
+import '../features/account/account.dart';
+import '../features/post/post_detail_page.dart';
 
 class PostGridCard extends StatefulWidget {
   final Post post;
@@ -139,8 +137,8 @@ class _PostGridCardState extends State<PostGridCard> {
                         const Icon(Icons.error, color: Colors.grey),
                   ),
                   Positioned(
-                    bottom: 8,
-                    left: 8,
+                    bottom: 4,
+                    left: 4,
                     child: GestureDetector(
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
@@ -151,14 +149,14 @@ class _PostGridCardState extends State<PostGridCard> {
                       child: Row(
                         children: [
                           CircleAvatar(
-                            radius: isLargeCard ? 20 : 16,
+                            radius: isLargeCard ? 20 : 14,
                             backgroundImage: widget.post.userPhotoUrl.isNotEmpty
                                 ? NetworkImage(widget.post.userPhotoUrl)
                                 : null,
                             child: widget.post.userPhotoUrl.isEmpty
                                 ? Icon(
                                     Icons.person,
-                                    size: isLargeCard ? 24 : 20,
+                                    size: isLargeCard ? 24 : 16,
                                   )
                                 : null,
                           ),
@@ -168,7 +166,7 @@ class _PostGridCardState extends State<PostGridCard> {
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
-                              fontSize: isLargeCard ? 16 : 14,
+                              fontSize: isLargeCard ? 16 : 10,
                               shadows: const [
                                 Shadow(color: Colors.black, blurRadius: 4),
                               ],
@@ -180,8 +178,8 @@ class _PostGridCardState extends State<PostGridCard> {
                   ),
                   if (!isMyPost)
                     Positioned(
-                      bottom: 8,
-                      right: 8,
+                      bottom: 4,
+                      right: 4,
                       child: ElevatedButton(
                         onPressed: _handleFollow,
                         style: ElevatedButton.styleFrom(
@@ -198,7 +196,7 @@ class _PostGridCardState extends State<PostGridCard> {
                             ),
                           ),
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
+                            horizontal: 8,
                             vertical: 4,
                           ),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -253,7 +251,7 @@ class _PostGridCardState extends State<PostGridCard> {
                           color: _isSaved
                               ? Colors.lightBlueAccent
                               : Colors.white,
-                          size: 26, // アイコンサイズを少し調整
+                          size: 22, // アイコンサイズを少し調整
                         ),
                         onPressed: _handleSave,
                       ),

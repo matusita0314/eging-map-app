@@ -197,6 +197,38 @@ class _AddPostPageState extends State<AddPostPage> {
                 ),
               ),
               const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(12.0),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade300),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.amber),
+                        SizedBox(width: 8),
+                        Text(
+                          '投稿時の注意事項',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      '・釣果のサイズが明確に分かるよう、必ず物差しなどを隣に置いてください。\n'
+                      '・写真はイカの真上から撮影してください。\n'
+                      '・故意に釣果を偽るなどの不正行為は絶対にやめてください。\n\n'
+                      '※ 上記が守られていない投稿は、運営の判断で削除する場合があります。',
+                      style: TextStyle(fontSize: 12, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
               // 各種フォームフィールド
               _buildSectionTitle('基本情報'),
               TextFormField(

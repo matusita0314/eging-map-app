@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/post_model.dart';
-import '../pages/post_detail_page.dart'; // 投稿詳細ページ
+import '../features/post/post_detail_page.dart'; // 投稿詳細ページ
 
 class PostPreviewSheet extends StatelessWidget {
   final Post post;

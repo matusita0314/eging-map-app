@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_wrapper.dart';
-import 'onboarding_page.dart';
+import '../features/onboarding/onboarding_page.dart';
 
 class LaunchPage extends StatefulWidget {
   const LaunchPage({super.key});

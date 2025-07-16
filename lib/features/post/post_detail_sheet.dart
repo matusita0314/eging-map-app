@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/post_model.dart';
+import '../../models/post_model.dart';
 
 class PostDetailSheet extends StatelessWidget {
   final Post post;

@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/post_model.dart';
-import '../models/comment_model.dart';
+import '../../models/post_model.dart';
+import '../../models/comment_model.dart';
 
 class CommentPage extends StatefulWidget {
   final Post post;

@@ -3,12 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import '../models/post_model.dart';
-import '../widgets/post_grid_card.dart';
+import '../../models/post_model.dart';
+import '../../widgets/post_grid_card.dart';
 import 'edit_profile_page.dart';
 import 'follower_list_page.dart';
 import 'saved_posts_page.dart';
-import '../widgets/common_app_bar.dart';
+import '../../widgets/common_app_bar.dart';
 
 class SavedPostsPage extends StatefulWidget {
   final String userId;

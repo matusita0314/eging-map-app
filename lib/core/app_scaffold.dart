@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-// import '../pages/ranking_page.dart';
 import '../features/home_feed/timeline_page.dart';
 import '../features/map/map_page.dart';
-import '../features/account/account.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../features/tournament/tournament_page.dart';
 import '../features/chat/chat_list_page.dart';
 import '../features/challenge/challenge_page.dart';
+import '../features/account/my_account_page.dart';
 
 class AppScaffold extends StatefulWidget {
   const AppScaffold({super.key});
@@ -25,13 +24,12 @@ class _AppScaffoldState extends State<AppScaffold> {
     super.initState();
     // 新しいページ構成
     _pages = <Widget>[
-      // const RankingPage(),
-      const ChatListPage(),
+      const TimelinePage(),
       const MapPage(),
       const TournamentPage(),
       const ChallengePage(),
-      const TimelinePage(),
-      MyPage(userId: _user.uid),
+      const ChatListPage(),
+      MyAccountPage(),
     ];
   }
 
@@ -48,10 +46,6 @@ class _AppScaffoldState extends State<AppScaffold> {
       bottomNavigationBar: BottomNavigationBar(
         // 新しいタブのアイテムリスト
         items: const <BottomNavigationBarItem>[
-          // BottomNavigationBarItem(
-          //   icon: Icon(Icons.leaderboard),
-          //   label: 'ランキング',
-          // ),
           BottomNavigationBarItem(icon: Icon(Icons.timeline), label: 'タイムライン'),
           BottomNavigationBarItem(icon: Icon(Icons.map), label: 'マップ'),
           BottomNavigationBarItem(icon: Icon(Icons.emoji_events), label: '大会'),

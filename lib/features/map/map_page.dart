@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import '../widgets/common_app_bar.dart';
-import '../models/post_model.dart';
+import '../../widgets/common_app_bar.dart';
+import '../../models/post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'add_post_page.dart';
-import '../widgets/post_preview_sheet.dart';
+import '../post/add_post_page.dart';
+import '../../widgets/post_preview_sheet.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});

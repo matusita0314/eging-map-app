@@ -4,11 +4,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import '../models/post_model.dart';
-import '../widgets/post_grid_card.dart';
+
+import '../../models/post_model.dart';
+import '../../widgets/post_grid_card.dart';
 import 'edit_profile_page.dart';
 import 'follower_list_page.dart';
 import 'saved_posts_page.dart';
+// ▼▼▼【追加】TalkPageをインポートします ▼▼▼
+import '../chat/talk_page.dart';
 
 class MyPage extends StatefulWidget {
   final String userId;
@@ -41,9 +44,6 @@ class _MyPageState extends State<MyPage> {
         .snapshots();
 
     _postsSubscription = stream.listen((snapshot) {
-      // ▼▼▼ ご要望のログ出力を追加 ▼▼▼
-      print("◉ アカウントの投稿データを受信 (件数: ${snapshot.docs.length})");
-
       if (mounted) {
         setState(() {
           _posts = snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList();
@@ -92,20 +92,62 @@ class _MyPageState extends State<MyPage> {
     });
   }
 
+  // ▼▼▼【追加】チャットを開始するためのメソッド ▼▼▼
+  Future<void> _startChat(DocumentSnapshot otherUserDoc) async {
+    final myId = _currentUser.uid;
+    final otherUserId = otherUserDoc.id;
+    final otherUserData = otherUserDoc.data() as Map<String, dynamic>;
+
+    // ユーザーIDをソートして、常に同じchatRoomIdを生成する
+    final userIds = [myId, otherUserId];
+    userIds.sort();
+    final chatRoomId = userIds.join('_');
+
+    final chatRoomRef = FirebaseFirestore.instance
+        .collection('chat_rooms')
+        .doc(chatRoomId);
+    final docSnapshot = await chatRoomRef.get();
+
+    // チャットルームが存在しなければ作成
+    if (!docSnapshot.exists) {
+      await chatRoomRef.set({
+        'userIds': userIds,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    // TalkPageへ遷移
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => TalkPage(
+            chatRoomId: chatRoomId,
+            otherUserName: otherUserData['displayName'] ?? '名無しさん',
+            otherUserPhotoUrl: otherUserData['photoUrl'] ?? '',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ユーザーのプロフィール情報（ランクや累計釣果数など）はリアルタイムで更新を反映させたいので、
-    // FutureBuilderからStreamBuilderに変更します。
     return Scaffold(
+      // AppBarは不要になったため削除。ヘッダーはbody内で作ります。
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')
             .doc(widget.userId)
             .snapshots(),
         builder: (context, userSnapshot) {
-          if (!userSnapshot.hasData) {
+          if (userSnapshot.connectionState == ConnectionState.waiting &&
+              _isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
+          if (!userSnapshot.hasData) {
+            return const Center(child: Text('ユーザーが見つかりません。'));
+          }
+
           final userDoc = userSnapshot.data!;
           final monthlyData = _createMonthlyChartData(_posts);
 
@@ -114,6 +156,8 @@ class _MyPageState extends State<MyPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildProfileHeader(userDoc),
+                // ▼▼▼【追加】アクションボタン領域 ▼▼▼
+                _buildActionButtons(userDoc),
                 const SizedBox(height: 16),
                 _buildStatsSection(userDoc),
                 const Divider(height: 32),
@@ -137,20 +181,79 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
+  // ▼▼▼【追加】戻る、編集、チャットボタンをまとめたウィジェット ▼▼▼
+  Widget _buildActionButtons(DocumentSnapshot userDoc) {
+    final isCurrentUser = _currentUser.uid == widget.userId;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        children: [
+          // 「戻る」ボタン
+          Expanded(
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('戻る'),
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // 自分のプロフィールの場合は「編集」、他人の場合は「チャット」ボタン
+          if (isCurrentUser)
+            Expanded(
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.edit),
+                label: const Text('編集'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const EditProfilePage(),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('チャット'),
+                onPressed: () => _startChat(userDoc),
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ▼▼▼【修正】ヘッダーから編集ボタンを削除 ▼▼▼
   Widget _buildProfileHeader(DocumentSnapshot userDoc) {
     final userData = userDoc.data() as Map<String, dynamic>? ?? {};
     final photoUrl = userData['photoUrl'] as String? ?? '';
     final displayName = userData['displayName'] as String? ?? '名無しさん';
     final introduction = userData['introduction'] as String? ?? '自己紹介がありません';
     final rank = userData['rank'] as String? ?? 'beginner';
-    final isCurrentUser = _currentUser.uid == widget.userId;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 24, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, kToolbarHeight + 24, 16, 16),
       width: double.infinity,
       color: Theme.of(context).primaryColor.withOpacity(0.1),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           CircleAvatar(
             radius: 40,
@@ -182,24 +285,19 @@ class _MyPageState extends State<MyPage> {
                 Text(
                   introduction,
                   style: const TextStyle(fontSize: 16, height: 1.4),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          if (isCurrentUser)
-            IconButton(
-              icon: const Icon(Icons.edit_note),
-              tooltip: 'プロフィールを編集',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const EditProfilePage(),
-                ),
-              ),
-            ),
+          // 編集ボタンは _buildActionButtons に移動したため、ここからは削除
         ],
       ),
     );
   }
+
+  // --- 以下、変更なし ---
 
   Widget _buildRankBadge(String rank) {
     Color badgeColor;

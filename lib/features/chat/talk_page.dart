@@ -81,6 +81,11 @@ class _TalkPageState extends State<TalkPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.otherUserName),
+        actions: [
+          IconButton(icon: const Icon(Icons.history), onPressed: () {}), // 履歴(時計)
+          IconButton(icon: const Icon(Icons.call_outlined), onPressed: () {}), // 電話
+          IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}), // その他
+        ],
       ),
       body: Column(
         children: [
@@ -104,12 +109,18 @@ class _TalkPageState extends State<TalkPage> {
                 final messages = snapshot.data!.docs;
 
                 return ListView.builder(
-                  reverse: true, // 新しいメッセージが下に来るように逆順表示
+                  padding: const EdgeInsets.all(8.0), // 全体に少し余白
+                  reverse: true,
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final message = Message.fromFirestore(messages[index]);
                     final isMe = message.senderId == _currentUser.uid;
-                    return _MessageBubble(message: message, isMe: isMe);
+                    // ▼▼▼ 相手のアイコンを表示するために修正 ▼▼▼
+                    return _MessageBubble(
+                      message: message,
+                      isMe: isMe,
+                      otherUserPhotoUrl: widget.otherUserPhotoUrl,
+                    );
                   },
                 );
               },
@@ -164,8 +175,9 @@ class _TalkPageState extends State<TalkPage> {
 class _MessageBubble extends StatelessWidget {
   final Message message;
   final bool isMe;
+  final String otherUserPhotoUrl;
 
-  const _MessageBubble({required this.message, required this.isMe});
+  const _MessageBubble({required this.message, required this.isMe, required this.otherUserPhotoUrl});
 
   @override
   Widget build(BuildContext context) {
