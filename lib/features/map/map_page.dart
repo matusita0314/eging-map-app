@@ -569,19 +569,20 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CommonAppBar(
-        title: 'マップ',
-        actions: [
-          IconButton(
-            icon: Icon(
-              _currentMapType == MapType.satellite
-                  ? Icons.satellite
-                  : Icons.map,
-            ),
-            onPressed: _showMapTypeDialog,
-            tooltip: '地図タイプを変更',
-          ),
-        ],
+  // ▼▼▼【変更】Textウィジェットで囲む ▼▼▼
+  title: const Text('マップ'), 
+  actions: [
+    IconButton(
+      icon: Icon(
+        _currentMapType == MapType.satellite
+            ? Icons.satellite
+            : Icons.map,
       ),
+      onPressed: _showMapTypeDialog,
+      tooltip: '地図タイプを変更',
+    ),
+  ],
+),
       floatingActionButton: FloatingActionButton(
         onPressed: _onAddPostButtonPressed,
         child: const Icon(Icons.add),

@@ -90,7 +90,7 @@ class _SavedPostsPageState extends State<SavedPostsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CommonAppBar(title: '保存した投稿'),
+      appBar: CommonAppBar(title: const Text('保存した投稿')),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')

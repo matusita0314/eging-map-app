@@ -1,5 +1,3 @@
-// lib/pages/login_page.dart (整理・修正版)
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'signup_page.dart';

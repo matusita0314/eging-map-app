@@ -4,13 +4,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-
+import '../../widgets/common_app_bar.dart';
 import '../../models/post_model.dart';
 import '../../widgets/post_grid_card.dart';
 import 'edit_profile_page.dart';
 import 'follower_list_page.dart';
 import 'saved_posts_page.dart';
-// ▼▼▼【追加】TalkPageをインポートします ▼▼▼
 import '../chat/talk_page.dart';
 
 class MyPage extends StatefulWidget {
@@ -132,8 +131,12 @@ class _MyPageState extends State<MyPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isCurrentUserProfile = _currentUser.uid == widget.userId;
     return Scaffold(
-      // AppBarは不要になったため削除。ヘッダーはbody内で作ります。
+      appBar: CommonAppBar(
+        // Textウィジェットを渡す
+        title: Text(isCurrentUserProfile ? 'マイページ' : 'プロフィール'),
+      ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')

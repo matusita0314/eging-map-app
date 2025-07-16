@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:collection/collection.dart';
 import '../../models/post_model.dart';
 import '../../widgets/post_grid_card.dart';
+import '../../widgets/common_app_bar.dart';
 
 class TimelinePage extends StatefulWidget {
   const TimelinePage({super.key});
@@ -21,27 +22,32 @@ class _TimelinePageState extends State<TimelinePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: _CustomTabSwitcher(
-            selectedIndex: _selectedTabIndex,
-            onTabSelected: (index) {
-              setState(() {
-                _selectedTabIndex = index;
-              });
-            },
+      // ▼▼▼【変更点1】AppBarのタイトルを固定のテキストにする ▼▼▼
+      appBar: CommonAppBar(title: const Text('タイムライン')),
+      // ▼▼▼【変更点2】bodyの構造を変更し、タブをAppBarの外に配置する ▼▼▼
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: _CustomTabSwitcher(
+              selectedIndex: _selectedTabIndex,
+              onTabSelected: (index) {
+                setState(() {
+                  _selectedTabIndex = index;
+                });
+              },
+            ),
           ),
-        ),
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        elevation: 0,
-      ),
-      body: IndexedStack(
-        index: _selectedTabIndex,
-        children: const [
-          _TodayTimeline(),
-          Center(child: Text('現在、お知らせはありません。')),
+          // 残りの領域すべてを使ってコンテンツを表示
+          Expanded(
+            child: IndexedStack(
+              index: _selectedTabIndex,
+              children: const [
+                _TodayTimeline(),
+                Center(child: Text('現在、お知らせはありません。')),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'talk_page.dart';
 import '../account/account.dart';
+import '../../widgets/common_app_bar.dart';
 
 // メインのタブ切り替えページ
 class ChatListPage extends StatefulWidget {
@@ -13,7 +14,8 @@ class ChatListPage extends StatefulWidget {
   State<ChatListPage> createState() => _ChatListPageState();
 }
 
-class _ChatListPageState extends State<ChatListPage> with SingleTickerProviderStateMixin {
+class _ChatListPageState extends State<ChatListPage>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
   @override
@@ -31,22 +33,20 @@ class _ChatListPageState extends State<ChatListPage> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: CommonAppBar(
         title: const Text('トーク'),
+        // bottomにTabBarを渡せる
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'トーク'),
             Tab(text: 'ともだち'),
+            Tab(text: 'トーク'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          _TalksList(),    // トーク一覧タブの中身
-          _FriendsList(),  // ともだち一覧タブの中身
-        ],
+        children: const [_FriendsList(), _TalksList()],
       ),
     );
   }
@@ -117,13 +117,22 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
   }
 
   void _fetchOtherUserData() {
-    final List<String> userIds = List<String>.from(widget.chatRoomData['userIds'] ?? []);
-    final otherUserId = userIds.firstWhere((id) => id != widget.currentUserId, orElse: () => '');
+    final List<String> userIds = List<String>.from(
+      widget.chatRoomData['userIds'] ?? [],
+    );
+    final otherUserId = userIds.firstWhere(
+      (id) => id != widget.currentUserId,
+      orElse: () => '',
+    );
 
     if (otherUserId.isNotEmpty) {
-      FirebaseFirestore.instance.collection('users').doc(otherUserId).get().then((doc) {
-        if (mounted) setState(() => _otherUserDoc = doc);
-      });
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(otherUserId)
+          .get()
+          .then((doc) {
+            if (mounted) setState(() => _otherUserDoc = doc);
+          });
     }
   }
 
@@ -132,28 +141,42 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
     if (_otherUserDoc == null) return const ListTile(title: Text('読み込み中...'));
 
     final otherUserData = _otherUserDoc!.data() as Map<String, dynamic>;
-    final lastMessage = widget.chatRoomData['lastMessage'] as String? ?? 'まだメッセージはありません';
+    final lastMessage =
+        widget.chatRoomData['lastMessage'] as String? ?? 'まだメッセージはありません';
     final timestamp = widget.chatRoomData['lastMessageAt'] as Timestamp?;
-    final lastMessageTime = timestamp != null ? DateFormat('HH:mm').format(timestamp.toDate()) : '';
+    final lastMessageTime = timestamp != null
+        ? DateFormat('HH:mm').format(timestamp.toDate())
+        : '';
 
     return ListTile(
       leading: CircleAvatar(
-        backgroundImage: (otherUserData['photoUrl'] as String?).toString().isNotEmpty
+        backgroundImage:
+            (otherUserData['photoUrl'] as String?).toString().isNotEmpty
             ? NetworkImage(otherUserData['photoUrl'])
             : null,
-        child: (otherUserData['photoUrl'] as String?).toString().isEmpty ? const Icon(Icons.person) : null,
+        child: (otherUserData['photoUrl'] as String?).toString().isEmpty
+            ? const Icon(Icons.person)
+            : null,
       ),
-      title: Text(otherUserData['displayName'] ?? '名無しさん', style: const TextStyle(fontWeight: FontWeight.bold)),
+      title: Text(
+        otherUserData['displayName'] ?? '名無しさん',
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
       subtitle: Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: Text(lastMessageTime, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+      trailing: Text(
+        lastMessageTime,
+        style: const TextStyle(color: Colors.grey, fontSize: 12),
+      ),
       onTap: () {
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (context) => TalkPage(
-            chatRoomId: widget.chatRoomId,
-            otherUserName: otherUserData['displayName'] ?? '名無しさん',
-            otherUserPhotoUrl: otherUserData['photoUrl'] ?? '',
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => TalkPage(
+              chatRoomId: widget.chatRoomId,
+              otherUserName: otherUserData['displayName'] ?? '名無しさん',
+              otherUserPhotoUrl: otherUserData['photoUrl'] ?? '',
+            ),
           ),
-        ));
+        );
       },
     );
   }
@@ -210,7 +233,8 @@ class _FriendsListState extends State<_FriendsList> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (snapshot.hasError) { // エラーハンドリングを追加
+        if (snapshot.hasError) {
+          // エラーハンドリングを追加
           return Center(child: Text('エラーが発生しました: ${snapshot.error}'));
         }
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -236,9 +260,11 @@ class _FriendsListState extends State<_FriendsList> {
               title: Text(userData['displayName'] ?? '名無しさん'),
               onTap: () {
                 // プロフィールページへ遷移
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => MyPage(userId: friendsDocs[index].id),
-                ));
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => MyPage(userId: friendsDocs[index].id),
+                  ),
+                );
               },
             );
           },
