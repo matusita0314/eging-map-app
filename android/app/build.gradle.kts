@@ -16,6 +16,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -34,6 +35,7 @@ android {
         
         // 🔥 ベクタードローアブル対応
         vectorDrawables.useSupportLibrary = true
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -90,10 +92,13 @@ dependencies {
     // 🔥 Google Play Services最適化
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.android.gms:play-services-location:21.0.1")
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
     
     // 🔥 MultiDex対応
     implementation("androidx.multidex:multidex:2.0.1")
     
     // 🔥 Vector Drawable対応
     implementation("androidx.vectordrawable:vectordrawable:1.1.0")
+
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

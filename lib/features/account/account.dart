@@ -11,6 +11,7 @@ import 'edit_profile_page.dart';
 import 'follower_list_page.dart';
 import 'saved_posts_page.dart';
 import '../chat/talk_page.dart';
+import 'settings_page.dart';
 
 class MyPage extends StatefulWidget {
   final String userId;
@@ -136,6 +137,19 @@ class _MyPageState extends State<MyPage> {
       appBar: CommonAppBar(
         // Textウィジェットを渡す
         title: Text(isCurrentUserProfile ? 'マイページ' : 'プロフィール'),
+        actions: [
+          // 自分のプロフィールページの場合のみ設定ボタンを表示
+          if (isCurrentUserProfile)
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: '設定',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const SettingsPage()),
+                );
+              },
+            ),
+        ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance

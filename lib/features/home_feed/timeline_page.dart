@@ -4,10 +4,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:collection/collection.dart';
 import '../../models/post_model.dart';
 import '../../widgets/post_grid_card.dart';
 import '../../widgets/common_app_bar.dart';
+import 'notification_list_view.dart';
 
 class TimelinePage extends StatefulWidget {
   const TimelinePage({super.key});
@@ -22,9 +22,7 @@ class _TimelinePageState extends State<TimelinePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // ▼▼▼【変更点1】AppBarのタイトルを固定のテキストにする ▼▼▼
       appBar: CommonAppBar(title: const Text('タイムライン')),
-      // ▼▼▼【変更点2】bodyの構造を変更し、タブをAppBarの外に配置する ▼▼▼
       body: Column(
         children: [
           Padding(
@@ -38,13 +36,13 @@ class _TimelinePageState extends State<TimelinePage> {
               },
             ),
           ),
-          // 残りの領域すべてを使ってコンテンツを表示
           Expanded(
             child: IndexedStack(
               index: _selectedTabIndex,
-              children: const [
-                _TodayTimeline(),
-                Center(child: Text('現在、お知らせはありません。')),
+              // ▼▼▼ ここの const を削除するだけ！ ▼▼▼
+              children: [
+                const _TodayTimeline(), // こちらはStateを持たないのでconstのままでOK
+                NotificationListView(),
               ],
             ),
           ),

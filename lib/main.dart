@@ -1,12 +1,125 @@
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import 'core/fcm_service.dart';
 import 'core/firebase_options.dart';
 import 'core/launch_page.dart';
+import 'core/navigator_key.dart';
+import 'features/post/post_detail_page.dart';
+import 'models/post_model.dart';
+import 'features/account/follower_list_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+// バックグラウンドで通知を受信した際のハンドラ
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  print("--- バックグラウンドでメッセージを受信 ---");
+  print("メッセージID: ${message.messageId}");
+  if (message.notification != null) {
+    print('タイトル: ${message.notification!.title}');
+    print('本文: ${message.notification!.body}');
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // FCMサービスをインスタンス化
+  final fcmService = FcmService();
+  await fcmService.createNotificationChannel();
+  await fcmService.initializeLocalNotifications();
+
+  await FirebaseMessaging.instance.requestPermission();
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // FCMのリスナーを設定
+  _setupFcmListeners();
+
   runApp(const MyApp());
+}
+
+// FCMリスナー設定用のトップレベル関数
+void _setupFcmListeners() {
+  final localNotifications = FlutterLocalNotificationsPlugin();
+
+  // 1. アプリがフォアグラウンドのときに通知を受信した場合の処理
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    print('--- フォアグラウンドでメッセージを受信 ---');
+    final notification = message.notification;
+    if (notification != null) {
+      print('タイトル: ${notification.title}');
+      print('本文: ${notification.body}');
+
+      // ローカル通知として画面上部にバナー表示する
+      localNotifications.show(
+        notification.hashCode,
+        notification.title,
+        notification.body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'high_importance_channel',
+            'High Importance Notifications',
+            importance: Importance.max,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: DarwinNotificationDetails(presentSound: true),
+        ),
+      );
+    }
+  });
+
+  // 2. アプリがバックグラウンド/終了状態から通知をタップして開かれた場合の処理
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
+    print('--- 通知をタップしてアプリが開かれました ---');
+    final String? postId = message.data['postId'];
+    final String? type = message.data['type'];
+    final String? fromUserId = message.data['fromUserId'];
+
+    // ▼▼▼【ここからロジックを修正】▼▼▼
+    if (type == 'follow') {
+      // フォロー通知の場合：フォロワーのプロフィールページへ遷移
+      print('フォロワーID: $fromUserId のプロフィールページに遷移します。');
+      //
+      // TODO: 本来は followerId を使ってフォロワーのプロフィールページに遷移すべきですが、
+      // ひとまず自分のフォロワーリストに遷移する暫定対応とします。
+      //
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => FollowerListPage(
+              userId: currentUser.uid,
+              listType: FollowListType.followers,
+            ),
+          ),
+        );
+      }
+    } else if (postId != null && postId.isNotEmpty) {
+      // それ以外の通知（いいね、コメント等）の場合：投稿詳細ページへ
+      print('投稿ID: $postId の詳細ページに遷移します。');
+      try {
+        final postDoc = await FirebaseFirestore.instance
+            .collection('posts')
+            .doc(postId)
+            .get();
+        if (postDoc.exists) {
+          final post = Post.fromFirestore(postDoc);
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(builder: (_) => PostDetailPage(post: post)),
+          );
+        } else {
+          print("投稿が見つかりませんでした。postId: $postId");
+        }
+      } catch (e) {
+        print("投稿データの取得または画面遷移に失敗しました: $e");
+      }
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -15,12 +128,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Eging One',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      // 最初に表示する画面をLaunchPageに変更
       home: const LaunchPage(),
     );
   }

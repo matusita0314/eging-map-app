@@ -15,35 +15,50 @@ class EditProfilePage extends StatefulWidget {
 
 class _EditProfilePageState extends State<EditProfilePage> {
   final _nameController = TextEditingController();
-  // ▼▼▼ 自己紹介文用のコントローラーを追加 ▼▼▼
   final _introductionController = TextEditingController();
   final _user = FirebaseAuth.instance.currentUser!;
 
   Uint8List? _imageData;
-  bool _isLoading = true; // 初期データ読み込み中もローディング表示
+  bool _isLoading = true;
+
+  // 変更済みかを判定するフラグ
+  bool _hasChangedDisplayName = false;
+  bool _hasChangedPhoto = false;
 
   @override
   void initState() {
     super.initState();
-    // 画面表示時に、現在のプロフィール情報を取得してフォームにセット
     _loadCurrentUserProfile();
   }
 
-  // Firestoreから現在のプロフィール情報を読み込むメソッド
   Future<void> _loadCurrentUserProfile() async {
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_user.uid)
-        .get();
-    final userData = userDoc.data();
-    if (userData != null) {
-      _nameController.text = userData['displayName'] ?? '';
-      _introductionController.text = userData['introduction'] ?? '';
+    setState(() => _isLoading = true);
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_user.uid)
+          .get();
+      final userData = userDoc.data();
+      if (userData != null && mounted) {
+        setState(() {
+          _nameController.text = userData['displayName'] ?? '';
+          _introductionController.text = userData['introduction'] ?? '';
+          _hasChangedDisplayName = userData['hasChangedDisplayName'] ?? false;
+          _hasChangedPhoto = userData['hasChangedPhoto'] ?? false;
+        });
+      }
+    } catch (e) {
+      print("ユーザー情報の読み込みエラー: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
-    setState(() => _isLoading = false);
   }
 
   Future<void> _pickImage() async {
+    // 変更不可の場合は何もしない
+    if (_hasChangedPhoto) return;
     final pickedFile = await ImagePicker().pickImage(
       source: ImageSource.gallery,
     );
@@ -62,14 +77,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
       ).showSnackBar(const SnackBar(content: Text('表示名を入力してください。')));
       return;
     }
-
     setState(() => _isLoading = true);
 
     try {
-      String? photoUrl = _user.photoURL;
+      final Map<String, dynamic> updateData = {
+        'introduction': _introductionController.text,
+      };
 
-      // 新しい画像が選択されている場合のみ、アップロード処理を行う
-      if (_imageData != null) {
+      // 名前の更新処理
+      if (!_hasChangedDisplayName &&
+          _nameController.text != _user.displayName) {
+        await _user.updateDisplayName(_nameController.text);
+        await _user.reload();
+        updateData['displayName'] = _nameController.text;
+        updateData['hasChangedDisplayName'] = true;
+      }
+
+      // 画像の更新処理
+      if (!_hasChangedPhoto && _imageData != null) {
         final originalImage = img.decodeImage(_imageData!);
         final resizedImage = originalImage!.width > 500
             ? img.copyResize(originalImage, width: 500)
@@ -77,28 +102,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
         final compressedImageData = img.encodeJpg(resizedImage, quality: 85);
 
         final storageRef = FirebaseStorage.instance.ref(
-          'profile_images/${_user.uid}.jpg',
+          'profile_images/${_user.uid}/profile.jpg',
         );
         await storageRef.putData(compressedImageData);
-        photoUrl = await storageRef.getDownloadURL();
-      }
+        final photoUrl = await storageRef.getDownloadURL();
 
-      // FirebaseAuthのプロフィールを更新
-      await _user.updateDisplayName(_nameController.text);
-      if (photoUrl != null) {
         await _user.updatePhotoURL(photoUrl);
+        await _user.reload();
+        updateData['photoUrl'] = photoUrl;
+        updateData['hasChangedPhoto'] = true;
       }
 
-      // Firestoreのusersコレクションも更新
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_user.uid)
-          .update({
-            'displayName': _nameController.text,
-            'photoUrl': photoUrl ?? '',
-            // ▼▼▼ 自己紹介文も更新リストに追加 ▼▼▼
-            'introduction': _introductionController.text,
-          });
+      // Firestoreのusersコレクションを更新
+      if (updateData.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_user.uid)
+            .update(updateData);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -123,7 +144,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   void dispose() {
     _nameController.dispose();
-    _introductionController.dispose(); // ▼▼▼ dispose処理を追加 ▼▼▼
+    _introductionController.dispose();
     super.dispose();
   }
 
@@ -156,34 +177,72 @@ class _EditProfilePageState extends State<EditProfilePage> {
                             ? const Icon(Icons.person, size: 60)
                             : null,
                       ),
-                      IconButton.filled(
-                        icon: const Icon(Icons.camera_alt),
-                        onPressed: _pickImage,
-                      ),
+                      if (!_hasChangedPhoto)
+                        IconButton.filled(
+                          icon: const Icon(Icons.camera_alt),
+                          onPressed: _pickImage,
+                          tooltip: 'プロフィール画像を変更',
+                        ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+
+                  // ▼▼▼ 注意喚起メッセージを追加 ▼▼▼
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '表示名とプロフィール画像は一度しか変更できません。',
+                            style: TextStyle(
+                              height: 1.4,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                   const SizedBox(height: 24),
                   TextFormField(
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: '表示名',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: _hasChangedDisplayName ? '表示名 (変更済み)' : '表示名',
+                      border: const OutlineInputBorder(),
+                      filled: !_hasChangedDisplayName, // 編集可の場合のみ色付け
+                      fillColor: Colors.white,
                     ),
+                    enabled: !_hasChangedDisplayName,
                   ),
                   const SizedBox(height: 16),
-                  // ▼▼▼ 自己紹介文の入力フォームを追加 ▼▼▼
                   TextFormField(
                     controller: _introductionController,
                     decoration: const InputDecoration(
                       labelText: '自己紹介',
                       border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Colors.white,
                     ),
-                    maxLines: 3, // 複数行入力可能にする
+                    maxLines: 3,
                   ),
                   const SizedBox(height: 32),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(50),
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
                     ),
                     onPressed: _isLoading ? null : _updateProfile,
                     child: const Text('保存する'),

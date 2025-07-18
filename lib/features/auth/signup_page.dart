@@ -27,6 +27,7 @@ class _SignupPageState extends State<SignupPage> {
 
       // ユーザー作成成功後、Firestoreにユーザー情報を保存
       if (credential.user != null) {
+        await credential.user!.updateDisplayName(_usernameController.text);
         await FirebaseFirestore.instance
             .collection('users')
             .doc(credential.user!.uid)
@@ -38,21 +39,29 @@ class _SignupPageState extends State<SignupPage> {
                   : '名無しさん',
               'photoUrl': '', // 初期のプロフィール画像URL（空）
               'createdAt': Timestamp.now(),
+              'hasChangedDisplayName': false, // プロフィール変更フラグ
+              'hasChangedPhoto': false, // プロフィール変更フラグ
+
+              'notificationSettings': {
+                'follow': true,
+                'likes': true, // いいね通知の初期値
+                'saves': true, // 保存通知の初期値
+                'comments': true, // コメント通知の初期値
+              },
             });
       }
       await FirebaseAuth.instance.signOut();
 
       // 成功した場合、この画面が有効（mounted）であれば、前の画面に戻るなどの処理
       if (mounted) {
-      // ★★★ ログインページに戻り、メッセージを渡す ★★★
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const LoginPage(
-            successMessage: '会員登録が完了しました。ログインしてください。',
+        // ★★★ ログインページに戻り、メッセージを渡す ★★★
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) =>
+                const LoginPage(successMessage: '会員登録が完了しました。ログインしてください。'),
           ),
-        ),
-      );
-    }
+        );
+      }
     } on FirebaseAuthException catch (e) {
       // エラーが発生した場合
       if (mounted) {
