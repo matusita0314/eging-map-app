@@ -1,243 +1,175 @@
-// lib/pages/timeline_page.dart (最終確定版)
-
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+import '../../providers/discover_filter_provider.dart';
+import 'package:algoliasearch/algoliasearch.dart';
+
 import '../../models/post_model.dart';
 import '../../widgets/post_grid_card.dart';
 import '../../widgets/common_app_bar.dart';
-import 'notification_list_view.dart';
+import '../../providers/following_provider.dart';
+
+part 'timeline_page.g.dart';
+
+@riverpod
+Stream<List<Post>> followingTimeline(FollowingTimelineRef ref) {
+  final followingUsersState = ref.watch(followingNotifierProvider);
+
+  if (followingUsersState.value == null || followingUsersState.value!.isEmpty) {
+    return Stream.value([]);
+  }
+
+  final followingUserIds = followingUsersState.value!.toList();
+  final stream = FirebaseFirestore.instance
+      .collection('posts')
+      .where('userId', whereIn: followingUserIds)
+      .orderBy('createdAt', descending: true)
+      .limit(50)
+      .snapshots();
+
+  return stream.map(
+    (snapshot) => snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList(),
+  );
+}
+
+@riverpod
+Future<List<Post>> discoverTimeline(DiscoverTimelineRef ref) async {
+  // フィルターの状態を監視
+  final filter = ref.watch(discoverFilterNotifierProvider);
+
+  // ▼▼▼【修正版】algoliasearch v1.34.1の正しい書き方 ▼▼▼
+  // Algoliaクライアントを初期化
+  // ★★★ 重要 ★★★
+  // ここには必ず「Search-Only API Key」を使用してください。
+  final algolia = Algolia.init(
+    applicationId: 'H43CZ7GND1', // AlgoliaのApplication ID
+    apiKey: '7d86d0716d7f8d84984e54f95f7b4dfa', // AlgoliaのSearch-Only API Key
+  );
+
+  final AlgoliaIndexReference index = algolia.instance.index(filter.sortBy);
+
+  // 検索クエリを構築
+  final AlgoliaQuery query = index.query('');
+  // TODO: ここにフィルター条件を追加していく
+  // .facetFilter('weather:晴れ')
+  // .facetFilter('squidSize > 30');
+
+  // Algoliaに検索をリクエスト
+  final AlgoliaQuerySnapshot snap = await query.getObjects();
+
+  // Algoliaの検索結果からPostオブジェクトのリストを作成
+  final posts = snap.hits.map((hit) => Post.fromAlgolia(hit.data)).toList();
+  return posts;
+  // ▲▲▲【ここまで修正】▲▲▲
+}
+
+@riverpod
+Stream<List<Post>> todayTimeline(TodayTimelineRef ref) {
+  final now = DateTime.now();
+  final startOfToday = DateTime(now.year, now.month, now.day);
+  final stream = FirebaseFirestore.instance
+      .collection('posts')
+      .where('createdAt', isGreaterThanOrEqualTo: startOfToday)
+      .orderBy('createdAt', descending: true)
+      .limit(20)
+      .snapshots();
+  return stream.map(
+    (snapshot) => snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList(),
+  );
+}
+
+// --- ▼▼▼ ここからUI定義 ▼▼▼ ---
 
 class TimelinePage extends StatefulWidget {
   const TimelinePage({super.key});
-
   @override
   State<TimelinePage> createState() => _TimelinePageState();
 }
 
-class _TimelinePageState extends State<TimelinePage> {
-  int _selectedTabIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CommonAppBar(title: const Text('タイムライン')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: _CustomTabSwitcher(
-              selectedIndex: _selectedTabIndex,
-              onTabSelected: (index) {
-                setState(() {
-                  _selectedTabIndex = index;
-                });
-              },
-            ),
-          ),
-          Expanded(
-            child: IndexedStack(
-              index: _selectedTabIndex,
-              // ▼▼▼ ここの const を削除するだけ！ ▼▼▼
-              children: [
-                const _TodayTimeline(), // こちらはStateを持たないのでconstのままでOK
-                NotificationListView(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CustomTabSwitcher extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onTabSelected;
-  const _CustomTabSwitcher({
-    required this.selectedIndex,
-    required this.onTabSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // ... このウィジェットの中身は変更ありません ...
-    return Container(
-      height: 40,
-      width: 220,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(25),
-      ),
-      child: Stack(
-        children: [
-          AnimatedAlign(
-            alignment: selectedIndex == 0
-                ? Alignment.centerLeft
-                : Alignment.centerRight,
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            child: Container(
-              width: 110,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-                borderRadius: BorderRadius.circular(25),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 5,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              _buildTabItem(context, 'Today', 0),
-              _buildTabItem(context, 'お知らせ', 1),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabItem(BuildContext context, String title, int index) {
-    // ... このウィジェットの中身は変更ありません ...
-    final isSelected = selectedIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onTabSelected(index),
-        child: Center(
-          child: Text(
-            title,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: isSelected ? Colors.white : Colors.grey[700],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TodayTimeline extends StatefulWidget {
-  const _TodayTimeline();
-
-  @override
-  State<_TodayTimeline> createState() => _TodayTimelineState();
-}
-
-class _TodayTimelineState extends State<_TodayTimeline> {
-  final _currentUser = FirebaseAuth.instance.currentUser!;
-  late final StreamSubscription _postsSubscription;
-
-  List<Post> _posts = [];
-  Set<String> _likedPostIds = {};
-  Set<String> _savedPostIds = {};
-  Set<String> _followingUserIds = {};
-  bool _isLoading = true;
+class _TimelinePageState extends State<TimelinePage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-
-    // ▼▼▼ まず関連データを一度だけ取得する ▼▼▼
-    _fetchRelatedData();
-
-    // ▼▼▼ 投稿のリアルタイム監視を開始 ▼▼▼
-    final now = DateTime.now();
-    final startOfToday = DateTime(now.year, now.month, now.day);
-    final stream = FirebaseFirestore.instance
-        .collection('posts')
-        .where('createdAt', isGreaterThanOrEqualTo: startOfToday)
-        .orderBy('createdAt', descending: true)
-        .snapshots();
-
-    _postsSubscription = stream.listen((snapshot) {
-      print("◉ 投稿データを受信 (件数: ${snapshot.docs.length})");
-      final newPosts = snapshot.docs
-          .map((doc) => Post.fromFirestore(doc))
-          .toList();
-      if (mounted) {
-        setState(() {
-          _posts = newPosts;
-          _isLoading = false; // 投稿データが来たらローディング解除
-        });
-      }
-    });
+    // タブの数を3つに変更
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
   void dispose() {
-    _postsSubscription.cancel();
+    _tabController.dispose();
     super.dispose();
-  }
-
-  // ▼▼▼ 「いいね」の読み込みも効率化された最終版のメソッド ▼▼▼
-  Future<void> _fetchRelatedData() async {
-    final futures = [
-      FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser.uid)
-          .collection('following')
-          .get(),
-      FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser.uid)
-          .collection('saved_posts')
-          .get(),
-      FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser.uid)
-          .collection('liked_posts')
-          .get(), // 新しいデータ構造を読む
-    ];
-
-    final results = await Future.wait(futures);
-    if (!mounted) return;
-
-    final followingDocs = results[0] as QuerySnapshot;
-    final savedDocs = results[1] as QuerySnapshot;
-    final likedDocs = results[2] as QuerySnapshot;
-
-    setState(() {
-      _followingUserIds = followingDocs.docs.map((doc) => doc.id).toSet();
-      _savedPostIds = savedDocs.docs.map((doc) => doc.id).toSet();
-      _likedPostIds = likedDocs.docs.map((doc) => doc.id).toSet();
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_posts.isEmpty) {
-      return const Center(child: Text('今日の投稿はまだありません。'));
-    }
-
-    return GridView.builder(
-      padding: const EdgeInsets.all(8.0),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 0.75,
+    return Scaffold(
+      appBar: CommonAppBar(
+        title: const Text('タイムライン'),
+        // AppBarの下にTabBarを配置
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'みつける'),
+            Tab(text: 'フォロー中'),
+            Tab(text: 'Today'),
+          ],
+        ),
       ),
-      itemCount: _posts.length,
-      itemBuilder: (context, index) {
-        final post = _posts[index];
-        return PostGridCard(
-          post: post,
-          isLikedByCurrentUser: _likedPostIds.contains(post.id),
-          isSavedByCurrentUser: _savedPostIds.contains(post.id),
-          isFollowingAuthor: _followingUserIds.contains(post.userId),
+      // TabBarViewでタブの切り替えをハンドリング
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // 各タブに対応するProviderを指定した汎用Viewを配置
+          _TimelineView(provider: discoverTimelineProvider),
+          _TimelineView(provider: followingTimelineProvider),
+          _TimelineView(provider: todayTimelineProvider),
+        ],
+      ),
+    );
+  }
+}
+
+// Providerから受け取った投稿リストを表示する汎用ウィジェット
+class _TimelineView extends ConsumerWidget {
+  // どのProviderを使うかを引数で受け取れるようにする
+  final AutoDisposeStreamProvider<List<Post>> provider;
+  const _TimelineView({required this.provider});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 引数で渡されたProviderを監視(watch)する
+    final postsAsyncValue = ref.watch(provider);
+
+    // Providerの状態に応じてUIを切り替える
+    return postsAsyncValue.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (err, stack) => Center(child: Text('エラーが発生しました: $err')),
+      data: (posts) {
+        if (posts.isEmpty) {
+          return const Center(child: Text('投稿はまだありません。'));
+        }
+        return RefreshIndicator(
+          onRefresh: () async {
+            // 下に引っ張って更新する機能
+            ref.invalidate(provider);
+          },
+          child: GridView.builder(
+            padding: const EdgeInsets.all(8.0),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 0.75,
+            ),
+            itemCount: posts.length,
+            itemBuilder: (context, index) {
+              return PostGridCard(post: posts[index]);
+            },
+          ),
         );
       },
     );

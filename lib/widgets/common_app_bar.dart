@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../features/auth/login_page.dart'; // ログインページをインポート
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
-  // ▼▼▼【変更】タイトルをWidget型にして、柔軟性を持たせる ▼▼▼
+import '../features/auth/login_page.dart';
+import '../providers/unread_notifications_provider.dart';
+import '../features/notifications/notification_page.dart';
+
+class CommonAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final Widget? title;
   final List<Widget> actions;
-  // ▼▼▼【追加】TabBarなどを配置するためのbottomプロパティ ▼▼▼
   final PreferredSizeWidget? bottom;
 
   const CommonAppBar({
@@ -27,13 +29,52 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  // ▼▼▼ buildメソッドに WidgetRef ref を追加 ▼▼▼
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Providerを監視して未読数を取得
+    final unreadCount = ref.watch(unreadNotificationsCountProvider).value ?? 0;
+
     return AppBar(
-      // AppBarのプロパティをそのまま受け渡す
       title: title,
       bottom: bottom,
-      // ▼▼▼【変更】既存のactionsにログアウトボタンを必ず追加する ▼▼▼
-      actions: actions + [
+      actions: [
+        // ▼▼▼ ここから通知ベルのUIを追加 ▼▼▼
+        IconButton(
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(Icons.notifications_outlined),
+              if (unreadCount > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$unreadCount',
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          onPressed: () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (context) => const NotificationPage(),
+            ));
+          },
+          tooltip: 'お知らせ',
+        ),
+        // ▲▲▲ ここまで通知ベルのUI ▲▲▲
+
+        // 既存のactions（ログアウトボタンなど）を追加
+        ...actions,
         IconButton(
           icon: const Icon(Icons.logout),
           onPressed: () => _logout(context),
@@ -43,10 +84,8 @@ class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  // AppBarの高さを指定
   @override
   Size get preferredSize {
-    // bottomがある場合はその高さも考慮する
     final bottomHeight = bottom?.preferredSize.height ?? 0;
     return Size.fromHeight(kToolbarHeight + bottomHeight);
   }

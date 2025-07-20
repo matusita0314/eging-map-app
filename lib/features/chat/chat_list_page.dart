@@ -147,6 +147,9 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
     final lastMessageTime = timestamp != null
         ? DateFormat('HH:mm').format(timestamp.toDate())
         : '';
+    final unreadMap =
+        widget.chatRoomData['unreadCount'] as Map<String, dynamic>?;
+    final unreadCount = unreadMap?[widget.currentUserId] as int? ?? 0;
 
     return ListTile(
       leading: CircleAvatar(
@@ -163,9 +166,36 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       subtitle: Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: Text(
-        lastMessageTime,
-        style: const TextStyle(color: Colors.grey, fontSize: 12),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            lastMessageTime,
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          // 未読数が1以上の場合のみバッジを表示
+          if (unreadCount > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '$unreadCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          else
+            // 未読がない場合は、レイアウトを保つために空のSizedBoxを配置
+            const SizedBox(height: 18), // Badgeの高さと大体合わせる
+        ],
       ),
       onTap: () {
         Navigator.of(context).push(

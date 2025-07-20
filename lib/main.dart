@@ -12,6 +12,9 @@ import 'features/post/post_detail_page.dart';
 import 'models/post_model.dart';
 import 'features/account/follower_list_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'features/chat/talk_page.dart';
+import 'features/account/account.dart';
 
 // バックグラウンドで通知を受信した際のハンドラ
 @pragma('vm:entry-point')
@@ -40,7 +43,7 @@ void main() async {
   // FCMのリスナーを設定
   _setupFcmListeners();
 
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 // FCMリスナー設定用のトップレベル関数
@@ -73,30 +76,17 @@ void _setupFcmListeners() {
     }
   });
 
-  // 2. アプリがバックグラウンド/終了状態から通知をタップして開かれた場合の処理
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
-    print('--- 通知をタップしてアプリが開かれました ---');
     final String? postId = message.data['postId'];
     final String? type = message.data['type'];
     final String? fromUserId = message.data['fromUserId'];
 
-    // ▼▼▼【ここからロジックを修正】▼▼▼
     if (type == 'follow') {
-      // フォロー通知の場合：フォロワーのプロフィールページへ遷移
-      print('フォロワーID: $fromUserId のプロフィールページに遷移します。');
-      //
-      // TODO: 本来は followerId を使ってフォロワーのプロフィールページに遷移すべきですが、
-      // ひとまず自分のフォロワーリストに遷移する暫定対応とします。
-      //
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser != null) {
+      final fromUserId = message.data['fromUserId'];
+      if (fromUserId != null) {
+        print('フォロワーID: $fromUserId のプロフィールページに遷移します。');
         navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => FollowerListPage(
-              userId: currentUser.uid,
-              listType: FollowListType.followers,
-            ),
-          ),
+          MaterialPageRoute(builder: (_) => MyPage(userId: fromUserId)),
         );
       }
     } else if (postId != null && postId.isNotEmpty) {
@@ -117,6 +107,24 @@ void _setupFcmListeners() {
         }
       } catch (e) {
         print("投稿データの取得または画面遷移に失敗しました: $e");
+      }
+    } else if (type == 'dm') {
+      // DM通知の場合：トークページへ
+      final chatRoomId = message.data['chatRoomId'];
+      final otherUserName = message.data['fromUserName'];
+      final otherUserPhotoUrl = message.data['fromUserPhotoUrl'];
+
+      if (chatRoomId != null && otherUserName != null) {
+        print('チャットルームID: $chatRoomId のトークページに遷移します。');
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => TalkPage(
+              chatRoomId: chatRoomId,
+              otherUserName: otherUserName,
+              otherUserPhotoUrl: otherUserPhotoUrl ?? '',
+            ),
+          ),
+        );
       }
     }
   });

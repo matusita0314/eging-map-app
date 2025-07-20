@@ -36,6 +36,25 @@ class _TalkPageState extends State<TalkPage> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
 
   @override
+  void initState() {
+    super.initState();
+    // この画面が開かれた瞬間に、既読にする処理を呼び出します
+    _markAsRead();
+  }
+
+  /// 自分の未読数を0に更新して「既読」にするメソッド
+  Future<void> _markAsRead() async {
+    final chatRoomRef = FirebaseFirestore.instance
+        .collection('chat_rooms')
+        .doc(widget.chatRoomId);
+
+    // ドキュメント内の、自分のIDに対応するunreadCountフィールドだけを0に更新します
+    await chatRoomRef.update({
+      'unreadCount.${_currentUser.uid}': 0,
+    });
+  }
+
+  @override
   void dispose() {
     _messageController.dispose();
     super.dispose();

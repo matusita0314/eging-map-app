@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:rxdart/rxdart.dart';
 import 'mission_detail_page.dart';
+import '../../widgets/common_app_bar.dart';
 import '../../models/challenge_model.dart';
 
 // --- メインのUI ---
@@ -33,7 +34,7 @@ class _ChallengePageState extends State<ChallengePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: CommonAppBar(
         title: const Text('チャレンジミッション'),
         actions: [
           IconButton(

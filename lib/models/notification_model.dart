@@ -10,6 +10,8 @@ class NotificationModel {
   final String? commentText; // コメント通知の場合のみ
   final DateTime createdAt;
   final bool isRead;
+  final String? chatRoomId;
+  final String? fromUserPhotoUrl;
 
   NotificationModel({
     required this.id,
@@ -21,6 +23,8 @@ class NotificationModel {
     this.commentText,
     required this.createdAt,
     required this.isRead,
+    this.chatRoomId,
+    this.fromUserPhotoUrl,
   });
 
   factory NotificationModel.fromFirestore(DocumentSnapshot doc) {
@@ -35,6 +39,8 @@ class NotificationModel {
       commentText: data['commentText'],
       createdAt: (data['createdAt'] as Timestamp? ?? Timestamp.now()).toDate(),
       isRead: data['isRead'] ?? false,
+      chatRoomId: data['chatRoomId'],
+      fromUserPhotoUrl: data['fromUserPhotoUrl'],
     );
   }
 }

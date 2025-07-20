@@ -1,121 +1,55 @@
+// lib/widgets/post_grid_card.dart (フォローボタンのスタイルを修正)
+
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/likes_provider.dart';
+import '../providers/saves_provider.dart';
+import '../providers/following_provider.dart';
+import '../providers/post_provider.dart';
+
 import '../models/post_model.dart';
 import '../features/account/account.dart';
 import '../features/post/post_detail_page.dart';
 
-class PostGridCard extends StatefulWidget {
+class PostGridCard extends ConsumerWidget {
   final Post post;
   final int? rank;
-  final bool isLikedByCurrentUser;
-  final bool isSavedByCurrentUser;
-  final bool isFollowingAuthor;
 
-  const PostGridCard({
-    super.key,
-    required this.post,
-    this.rank,
-    required this.isLikedByCurrentUser,
-    required this.isSavedByCurrentUser,
-    required this.isFollowingAuthor,
-  });
+  const PostGridCard({super.key, required this.post, this.rank});
 
   @override
-  State<PostGridCard> createState() => _PostGridCardState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentUser = FirebaseAuth.instance.currentUser!;
+    final isMyPost = currentUser.uid == post.userId;
 
-class _PostGridCardState extends State<PostGridCard> {
-  final _currentUser = FirebaseAuth.instance.currentUser!;
+    final postAsyncValue = ref.watch(postStreamProvider(post.id));
 
-  late bool _isLiked;
-  late bool _isSaved;
-  late bool _isFollowing;
-  late int _likeCount;
-
-  @override
-  void initState() {
-    super.initState();
-    _isLiked = widget.isLikedByCurrentUser;
-    _isSaved = widget.isSavedByCurrentUser;
-    _isFollowing = widget.isFollowingAuthor;
-    _likeCount = widget.post.likeCount;
-  }
-
-  // --- いいね、保存、フォローの各メソッドは変更なし ---
-  Future<void> _handleSave() async {
-    setState(() => _isSaved = !_isSaved);
-    final ref = FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('saved_posts')
-        .doc(widget.post.id);
-    _isSaved ? await ref.set({'savedAt': Timestamp.now()}) : await ref.delete();
-  }
-
-  Future<void> _handleLike() async {
-    setState(() {
-      _isLiked ? _likeCount-- : _likeCount++;
-      _isLiked = !_isLiked;
-    });
-
-    final postRef = FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.post.id);
-    final likedPostRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('liked_posts')
-        .doc(widget.post.id);
-    final batch = FirebaseFirestore.instance.batch();
-
-    if (_isLiked) {
-      batch.set(likedPostRef, {'likedAt': Timestamp.now()});
-      batch.update(postRef, {'likeCount': FieldValue.increment(1)});
-    } else {
-      batch.delete(likedPostRef);
-      batch.update(postRef, {'likeCount': FieldValue.increment(-1)});
+    if (postAsyncValue is! AsyncData<Post>) {
+      return Card(
+        clipBehavior: Clip.antiAlias,
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Container(color: Colors.grey.shade200),
+      );
     }
-    await batch.commit();
-  }
 
-  Future<void> _handleFollow() async {
-    setState(() => _isFollowing = !_isFollowing);
-    final batch = FirebaseFirestore.instance.batch();
-    final myFollowingRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser.uid)
-        .collection('following')
-        .doc(widget.post.userId);
-    final theirFollowersRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.post.userId)
-        .collection('followers')
-        .doc(_currentUser.uid);
-
-    if (_isFollowing) {
-      batch.set(myFollowingRef, {'followedAt': Timestamp.now()});
-      batch.set(theirFollowersRef, {'followerAt': Timestamp.now()});
-    } else {
-      batch.delete(myFollowingRef);
-      batch.delete(theirFollowersRef);
-    }
-    await batch.commit();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isMyPost = _currentUser.uid == widget.post.userId;
-    final isLargeCard = widget.rank == 1;
+    final realTimePost = postAsyncValue.value!;
+    final isLiked =
+        ref.watch(likedPostsNotifierProvider).value?.contains(post.id) ?? false;
+    final isSaved =
+        ref.watch(savedPostsNotifierProvider).value?.contains(post.id) ?? false;
+    final isFollowing =
+        ref.watch(followingNotifierProvider).value?.contains(post.userId) ??
+        false;
 
     return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => PostDetailPage(post: widget.post),
-          ),
-        );
-      },
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => PostDetailPage(post: realTimePost),
+        ),
+      ),
       child: Card(
         clipBehavior: Clip.antiAlias,
         elevation: 2,
@@ -124,55 +58,78 @@ class _PostGridCardState extends State<PostGridCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              flex: 3,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   Image.network(
-                    widget.post.thumbnailUrl.isNotEmpty
-                        ? widget.post.thumbnailUrl
-                        : widget.post.imageUrl,
+                    realTimePost.thumbnailUrl.isNotEmpty
+                        ? realTimePost.thumbnailUrl
+                        : realTimePost.imageUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) =>
                         const Icon(Icons.error, color: Colors.grey),
                   ),
                   Positioned(
-                    bottom: 4,
-                    left: 4,
+                    top: 4,
+                    right: 4,
+                    child: Material(
+                      color: Colors.black.withOpacity(0.3),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 20,
+                        icon: Icon(
+                          isSaved ? Icons.bookmark : Icons.bookmark_border,
+                          color: isSaved
+                              ? Colors.lightBlueAccent
+                              : Colors.white,
+                        ),
+                        onPressed: () => ref
+                            .read(savedPostsNotifierProvider.notifier)
+                            .handleSave(post.id),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 8,
+                    left: 8,
                     child: GestureDetector(
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (context) =>
-                              MyPage(userId: widget.post.userId),
+                          builder: (context) => MyPage(userId: post.userId),
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: isLargeCard ? 20 : 14,
-                            backgroundImage: widget.post.userPhotoUrl.isNotEmpty
-                                ? NetworkImage(widget.post.userPhotoUrl)
-                                : null,
-                            child: widget.post.userPhotoUrl.isEmpty
-                                ? Icon(
-                                    Icons.person,
-                                    size: isLargeCard ? 24 : 16,
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            widget.post.userName,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: isLargeCard ? 16 : 10,
-                              shadows: const [
-                                Shadow(color: Colors.black, blurRadius: 4),
-                              ],
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 12,
+                              backgroundImage: post.userPhotoUrl.isNotEmpty
+                                  ? NetworkImage(post.userPhotoUrl)
+                                  : null,
+                              child: post.userPhotoUrl.isEmpty
+                                  ? const Icon(Icons.person, size: 12)
+                                  : null,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              post.userName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -181,12 +138,17 @@ class _PostGridCardState extends State<PostGridCard> {
                       bottom: 4,
                       right: 4,
                       child: ElevatedButton(
-                        onPressed: _handleFollow,
+                        onPressed: () {
+                          ref
+                              .read(followingNotifierProvider.notifier)
+                              .handleFollow(post.userId);
+                        },
+                        // ▼▼▼【スタイル修正】ご指定の通りに背景色と文字色を変更 ▼▼▼
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _isFollowing
-                              ? Colors.white.withOpacity(0.9)
+                          backgroundColor: isFollowing
+                              ? Colors.white
                               : Colors.blue,
-                          foregroundColor: _isFollowing
+                          foregroundColor: isFollowing
                               ? Colors.blue
                               : Colors.white,
                           shape: RoundedRectangleBorder(
@@ -203,7 +165,7 @@ class _PostGridCardState extends State<PostGridCard> {
                           minimumSize: const Size(0, 30),
                         ),
                         child: Text(
-                          _isFollowing ? 'フォロー中' : '+ フォロー',
+                          isFollowing ? 'フォロー中' : '+ フォロー',
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -211,115 +173,61 @@ class _PostGridCardState extends State<PostGridCard> {
                         ),
                       ),
                     ),
-                  if (widget.rank != null)
-                    Positioned(
-                      top: 4,
-                      left: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white, width: 1.5),
-                        ),
-                        child: Text(
-                          '${widget.rank}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  // ▼▼▼ 変更点: 保存ボタンを画像の右上に配置 ▼▼▼
-                  Positioned(
-                    top: 1,
-                    right: 1,
-                    child: Material(
-                      color: Colors.grey.withOpacity(0.7),
-                      shape: const CircleBorder(),
-                      clipBehavior: Clip.antiAlias,
-                      child: IconButton(
-                        padding: const EdgeInsets.all(0), // 内側の余白を調整
-                        constraints: const BoxConstraints(),
-                        icon: Icon(
-                          _isSaved ? Icons.bookmark : Icons.bookmark_border,
-                          color: _isSaved
-                              ? Colors.lightBlueAccent
-                              : Colors.white,
-                          size: 22, // アイコンサイズを少し調整
-                        ),
-                        onPressed: _handleSave,
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'イカ ${widget.post.squidSize} cm',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: isLargeCard ? 16 : 14,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'ヒットエギ: ${widget.post.egiName}',
-                          style: TextStyle(
-                            color: Colors.grey.shade700,
-                            fontSize: isLargeCard ? 13 : 11,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'イカ ${realTimePost.squidSize} cm',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
-                    // ▼▼▼ 変更点: Rowの配置を MainAxisAlignment.end に変更して右詰めにする ▼▼▼
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        _buildActionButton(
-                          _isLiked ? Icons.favorite : Icons.favorite_border,
-                          _isLiked ? Colors.red : Colors.grey,
-                          _likeCount,
-                          _handleLike,
-                        ),
-                        const SizedBox(width: 12), // 少し間隔を広げる
-                        _buildActionButton(
-                          Icons.chat_bubble_outline,
-                          Colors.grey,
-                          widget.post.commentCount,
-                          () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => PostDetailPage(
-                                  post: widget.post,
-                                  scrollToComments: true,
-                                ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'ヒットエギ: ${realTimePost.egiName}',
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      _buildActionButton(
+                        isLiked ? Icons.favorite : Icons.favorite_border,
+                        isLiked ? Colors.red : Colors.grey,
+                        realTimePost.likeCount,
+                        () {
+                          ref
+                              .read(likedPostsNotifierProvider.notifier)
+                              .handleLike(post.id);
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      _buildActionButton(
+                        Icons.chat_bubble_outline,
+                        Colors.grey,
+                        realTimePost.commentCount,
+                        () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => PostDetailPage(
+                                post: realTimePost,
+                                scrollToComments: true,
                               ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],
@@ -338,18 +246,16 @@ class _PostGridCardState extends State<PostGridCard> {
       children: [
         IconButton(
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-          icon: Icon(icon, color: color, size: 22),
+          constraints: const BoxConstraints(minHeight: 24, minWidth: 24),
+          visualDensity: VisualDensity.compact,
+          icon: Icon(icon, color: color, size: 20),
           onPressed: onPressed,
         ),
-        // ▼▼▼ 変更点: 保存ボタンにはカウントがないので、nullの場合は何も表示しない ▼▼▼
+        const SizedBox(width: 2),
         if (count != null)
-          Padding(
-            padding: const EdgeInsets.only(left: 2.0),
-            child: Text(
-              '$count',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
+          Text(
+            '$count',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
           ),
       ],
     );

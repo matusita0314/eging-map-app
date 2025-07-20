@@ -10,6 +10,7 @@ import '../../models/post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../post/add_post_page.dart';
 import '../../widgets/post_preview_sheet.dart';
+// import 'package:geofire_common/geofire_common.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -23,6 +24,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const LatLng _initialPosition = LatLng(35.681236, 139.767125);
   LatLng? _currentPosition;
   bool _isLoading = true;
+  bool _isDarkMap = false;
+  bool _didRunInitialSetup = false;
 
   // マーカー関連
   Marker? _tappedMarker;
@@ -211,11 +214,19 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _loadCustomIcon();
     _getCurrentLocation();
     _initializePostsStream();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_didRunInitialSetup) {
+      _loadCustomIcon();
+      _didRunInitialSetup = true;
+    }
+  }
+    
   @override
   void dispose() {
     _postsSubscription?.cancel();
@@ -225,63 +236,33 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   Future<void> _loadCustomIcon() async {
     try {
-      // ★★★ 目標とするアイコンの横幅（ピクセル単位）★★★
-      // この数値を変更することで、アイコンの大きさを自由に調整できます。
-      // 例：80, 100, 120 など
-      const int targetWidth = 130;
 
-      // 1. アセットから画像の元データをバイトとして読み込む
-      final ByteData byteData = await rootBundle.load(
-        'assets/images/squid.png',
-      );
-      final Uint8List bytes = byteData.buffer.asUint8List();
+      // デバイスの画面密度を取得
+      final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
 
-      // 2. バイトデータを画像オブジェクトに変換
-      final ui.Codec codec = await ui.instantiateImageCodec(
-        bytes,
-        targetWidth: targetWidth, // リサイズ品質向上のためのヒント
-      );
-      final ui.FrameInfo frameInfo = await codec.getNextFrame();
-      final ui.Image originalImage = frameInfo.image;
+      // 密度に応じて適切な画像を選択
+      String assetPath;
+      if (devicePixelRatio >= 3.0) {
+        assetPath = 'assets/images/squid_144.png'; // 3x密度
+      } else if (devicePixelRatio >= 2.0) {
+        assetPath = 'assets/images/squid_96.png'; // 2x密度
+      } else {
+        assetPath = 'assets/images/squid_48.png'; // 1x密度
+      }
 
-      // 3. 新しいキャンバスを用意し、指定したサイズで画像を描画
-      final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
-      final Canvas canvas = Canvas(pictureRecorder);
-      final Paint paint = Paint()..filterQuality = FilterQuality.high;
-
-      // 元画像の縦横比を維持して描画先のサイズを計算
-      final double aspectRatio = originalImage.width / originalImage.height;
-      final int targetHeight = (targetWidth / aspectRatio).round();
-
-      // 指定したサイズでキャンバスに描画
-      canvas.drawImageRect(
-        originalImage,
-        Rect.fromLTRB(
-          0,
-          0,
-          originalImage.width.toDouble(),
-          originalImage.height.toDouble(),
+      _squidIcon = await BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(
+          size: const Size(48, 48),
+          devicePixelRatio: devicePixelRatio,
         ),
-        Rect.fromLTRB(0, 0, targetWidth.toDouble(), targetHeight.toDouble()),
-        paint,
+        assetPath,
       );
 
-      // 4. 再描画した画像をバイトデータに変換
-      final ui.Image resizedImage = await pictureRecorder
-          .endRecording()
-          .toImage(targetWidth, targetHeight);
-      final ByteData? resizedByteData = await resizedImage.toByteData(
-        format: ui.ImageByteFormat.png,
-      );
-      final Uint8List resizedBytes = resizedByteData!.buffer.asUint8List();
-
-      // 5. リサイズ後のバイトデータからマーカーアイコンを生成
       if (mounted) {
-        _squidIcon = BitmapDescriptor.fromBytes(resizedBytes);
-        _rebuildAllMarkers(); // 既存マーカーも更新
+        _rebuildAllMarkers();
       }
     } catch (e) {
-      print('カスタムアイコンのリサイズと読み込みに失敗しました: $e');
+      // フォールバック
       if (mounted) {
         _squidIcon = BitmapDescriptor.defaultMarkerWithHue(
           BitmapDescriptor.hueBlue,
@@ -415,6 +396,29 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     _updateMarkersFromCache();
   }
 
+  Future<void> _toggleMapStyle() async {
+    // 現在の状態を反転させる
+    final newIsDark = !_isDarkMap;
+    // スタイルを適用する文字列を決定（ダークモードOFFならnull）
+    final style = newIsDark ? _darkMapStyle : null;
+
+    try {
+      final controller = await _controller.future;
+      // setMapStyleに文字列またはnullを渡す
+      await controller.setMapStyle(style);
+      // 成功したら状態を更新
+      if (mounted) {
+        setState(() {
+          _isDarkMap = newIsDark;
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('マップスタイルの適用に失敗しました。')));
+    }
+  }
+
   Future<void> _getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -521,17 +525,44 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('地図タイプを選択'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildMapTypeOption(MapType.normal, '通常', Icons.map),
-              _buildMapTypeOption(MapType.satellite, '衛星', Icons.satellite),
-              _buildMapTypeOption(MapType.terrain, '地形', Icons.terrain),
-              _buildMapTypeOption(MapType.hybrid, 'ハイブリッド', Icons.layers),
-            ],
-          ),
+        // ダイアログ内の状態を管理するためにStatefulBuilderを使用
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('表示設定'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Divider(),
+                  const Text(
+                    '地図タイプ',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  _buildMapTypeOption(MapType.normal, '通常', Icons.map),
+                  _buildMapTypeOption(MapType.satellite, '衛星', Icons.satellite),
+                  const Divider(),
+                  SwitchListTile(
+                    title: const Text('ダークモード'),
+                    secondary: const Icon(Icons.dark_mode_outlined),
+                    value: _isDarkMap,
+                    onChanged: (newValue) {
+                      // スタイルを切り替えてからダイアログを閉じる
+                      _toggleMapStyle().then((_) {
+                        // ダイアログ内のスイッチ表示を即時更新
+                        setDialogState(() {});
+                      });
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('閉じる'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -558,31 +589,31 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       _controller.complete(controller);
     }
 
-    try {
-      await controller.setMapStyle(_darkMapStyle);
-    } catch (e) {
-      print('マップスタイルの適用に失敗しました: $e');
-    }
+    // try {
+    //   await controller.setMapStyle(_darkMapStyle);
+    // } catch (e) {
+    //   print('マップスタイルの適用に失敗しました: $e');
+    // }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CommonAppBar(
-  // ▼▼▼【変更】Textウィジェットで囲む ▼▼▼
-  title: const Text('マップ'), 
-  actions: [
-    IconButton(
-      icon: Icon(
-        _currentMapType == MapType.satellite
-            ? Icons.satellite
-            : Icons.map,
+        // ▼▼▼【変更】Textウィジェットで囲む ▼▼▼
+        title: const Text('マップ'),
+        actions: [
+          IconButton(
+            icon: Icon(
+              _currentMapType == MapType.satellite
+                  ? Icons.satellite
+                  : Icons.map,
+            ),
+            onPressed: _showMapTypeDialog,
+            tooltip: '地図タイプを変更',
+          ),
+        ],
       ),
-      onPressed: _showMapTypeDialog,
-      tooltip: '地図タイプを変更',
-    ),
-  ],
-),
       floatingActionButton: FloatingActionButton(
         onPressed: _onAddPostButtonPressed,
         child: const Icon(Icons.add),

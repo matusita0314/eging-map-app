@@ -7,6 +7,7 @@ import '../../models/notification_model.dart';
 import '../../models/post_model.dart';
 import '../post/post_detail_page.dart';
 import '../account/follower_list_page.dart';
+import '../chat/talk_page.dart';
 
 class NotificationListView extends StatefulWidget {
   const NotificationListView({super.key});
@@ -39,38 +40,41 @@ class _NotificationListViewState extends State<NotificationListView> {
 
     // タップされた通知に関連する投稿データを取得
     if (notification.type == 'follow') {
-      // フォロー通知の場合
-      if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => FollowerListPage(
+            userId: _currentUser!.uid,
+            listType: FollowListType.followers,
+          ),
+        ),
+      );
+    } else if (notification.type == 'dm') {
+      if (notification.chatRoomId != null) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => FollowerListPage(
-              userId: _currentUser!.uid,
-              listType: FollowListType.followers,
+            builder: (context) => TalkPage(
+              chatRoomId: notification.chatRoomId!,
+              otherUserName: notification.fromUserName,
+              otherUserPhotoUrl: notification.fromUserPhotoUrl ?? '',
             ),
           ),
         );
       }
     } else {
-      // それ以外の通知の場合
-      final postDoc = await FirebaseFirestore.instance
-          .collection('posts')
-          .doc(notification.postId)
-          .get();
-
-      if (!postDoc.exists) {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('この投稿は削除されたようです。')));
+      // 'likes', 'comments', 'saves'
+      if (notification.postId.isNotEmpty) {
+        final postDoc = await FirebaseFirestore.instance
+            .collection('posts')
+            .doc(notification.postId)
+            .get();
+        if (postDoc.exists && mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) =>
+                  PostDetailPage(post: Post.fromFirestore(postDoc)),
+            ),
+          );
         }
-        return;
-      }
-
-      if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => PostDetailPage(post: Post.fromFirestore(postDoc)),
-          ),
-        );
       }
     }
   }
@@ -188,6 +192,22 @@ class _NotificationTile extends StatelessWidget {
             style: defaultStyle,
           ),
         );
+      case 'dm':
+        return (
+          Icons.chat,
+          TextSpan(
+            children: [
+              userNameSpan,
+              const TextSpan(text: 'さんからメッセージ: '),
+              TextSpan(
+                text: '"${notification.commentText ?? ''}"',
+                style: const TextStyle(fontStyle: FontStyle.italic),
+              ),
+            ],
+            style: defaultStyle,
+          ),
+        );
+
       default:
         return (
           Icons.notifications,

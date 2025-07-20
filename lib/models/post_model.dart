@@ -79,4 +79,35 @@ class Post {
       commentCount: data['commentCount'] ?? 0,
     );
   }
+
+  factory Post.fromAlgolia(Map<String, dynamic> data) {
+    // Algoliaの_geolocからLatLngを復元
+    final geo = data['_geoloc'] as Map<String, dynamic>?;
+    final location = (geo != null) ? LatLng(geo['lat'], geo['lng']) : const LatLng(0, 0);
+
+    return Post(
+      id: data['objectID'] ?? '',
+      userId: data['userId'] ?? '',
+      userName: data['userName'] ?? '名無しさん',
+      userPhotoUrl: data['userPhotoUrl'] ?? '',
+      imageUrl: data['imageUrl'] ?? '',
+      thumbnailUrl: data['thumbnailUrl'] ?? '',
+      // AlgoliaからはUnixタイムスタンプ(ミリ秒)で来るのでDateTimeに変換
+      createdAt: DateTime.fromMillisecondsSinceEpoch(data['createdAt'] ?? 0),
+      location: location,
+      weather: data['weather'] ?? '',
+      airTemperature: (data['airTemperature'])?.toDouble(),
+      waterTemperature: (data['waterTemperature'])?.toDouble(),
+      caption: data['caption'],
+      squidSize: (data['squidSize'] ?? 0.0).toDouble(),
+      weight: (data['weight'])?.toDouble(),
+      egiName: data['egiName'] ?? '',
+      egiMaker: data['egiMaker'],
+      tackleRod: data['tackleRod'],
+      tackleReel: data['tackleReel'],
+      tackleLine: data['tackleLine'],
+      likeCount: data['likeCount'] ?? 0,
+      commentCount: data['commentCount'] ?? 0,
+    );
+  }
 }

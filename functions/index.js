@@ -1,16 +1,40 @@
+const functions = require("firebase-functions");
 const { onDocumentCreated, onDocumentWritten, onDocumentUpdated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const admin = require("firebase-admin");
+const algoliasearch = require("algoliasearch");
+
+// Firebase Admin初期化（重複初期化を防ぐ）
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+const db = admin.firestore();
+const storage = admin.storage();
+
+// 環境変数からAPIキーを初期化（エラーハンドリング改善）
+let algoliaClient;
+let algoliaIndex;
+
+try {
+  const ALGOLIA_APP_ID = functions.config().algolia?.app_id;
+  const ALGOLIA_ADMIN_KEY = functions.config().algolia?.api_key;
+  
+  if (!ALGOLIA_APP_ID || !ALGOLIA_ADMIN_KEY) {
+    console.warn("Algolia configuration not found. Algolia-related functions will be disabled.");
+  } else {
+    algoliaClient = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_ADMIN_KEY);
+    algoliaIndex = algoliaClient.initIndex("posts");
+  }
+} catch (error) {
+  console.warn("Failed to initialize Algolia:", error);
+}
+
 const sharp = require("sharp");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const {onRequest} = require("firebase-functions/v2/https");
-
-admin.initializeApp();
-
-const db = admin.firestore();
-const storage = admin.storage();
 
 // =================================================================
 // ▼▼▼ 汎用的な通知作成関数 (プッシュ通知送信機能付き) ▼▼▼
@@ -65,6 +89,10 @@ async function createNotification(recipientId, notificationData) {
     case "follow":
       title = "新しいフォロワーがいます！";
       body = `${notificationData.fromUserName}さんがあなたをフォローしました。`;
+      break;
+    case "dm":
+      title = `${notificationData.fromUserName}さんから新着メッセージ`;
+      body = notificationData.commentText; // メッセージ本文を通知内容にする
       break;
   }
 
@@ -525,4 +553,123 @@ exports.createNotificationOnFollow = onDocumentCreated({
     postId: "",
     postThumbnailUrl: "", // フォロワーのアイコンを表示しても良い
   });
+});
+
+// =================================================================
+// ▼▼▼ 12. 新しいメッセージ受信時に通知を作成・送信する関数 ▼▼▼
+// =================================================================
+exports.createNotificationOnNewMessage = onDocumentCreated({
+  document: "chat_rooms/{chatRoomId}/messages/{messageId}",
+  region: "asia-northeast1",
+}, async (event) => {
+  const chatRoomId = event.params.chatRoomId;
+  const messageData = event.data.data();
+  if (!messageData) {
+    return console.log("No message data found.");
+  }
+
+  const senderId = messageData.senderId;
+  const chatRoomRef = db.collection("chat_rooms").doc(chatRoomId);
+  const chatRoomSnap = await chatRoomRef.get();
+  if (!chatRoomSnap.exists) {
+    return console.log(`Chat room ${chatRoomId} not found.`);
+  }
+
+  const chatRoomData = chatRoomSnap.data();
+  const userIds = chatRoomData.userIds || [];
+  
+  // 送信者ではない方のユーザーIDを取得 (1対1チャットを想定)
+  const recipientId = userIds.find((id) => id !== senderId);
+  if (!recipientId) {
+    return console.log("Recipient not found in chat room.");
+  }
+  
+  // ★★★【未読数カウントアップ処理】★★★
+  // チャットルームのunreadCountフィールドで、受信者のカウントを1増やす
+  await chatRoomRef.update({
+    [`unreadCount.${recipientId}`]: admin.firestore.FieldValue.increment(1),
+  });
+
+  // 送信者のユーザー情報を取得（通知に名前を表示するため）
+  const senderSnap = await db.collection("users").doc(senderId).get();
+  if (!senderSnap.exists) {
+    return console.log(`Sender user ${senderId} not found.`);
+  }
+  const senderName = senderSnap.data().displayName || "名無しさん";
+
+  // 汎用通知作成関数を呼び出す
+  return createNotification(recipientId, {
+    type: "dm", // 通知タイプを 'dm' (Direct Message) とする
+    fromUserName: senderName,
+    fromUserId: senderId,
+    commentText: messageData.text, // メッセージ本文を通知に含める
+    // DM通知は特定の投稿に紐づかないため、以下は空にする
+    chatRoomId: chatRoomId,
+    fromUserPhotoUrl: senderSnap.data().photoUrl || "",
+    postId: "", 
+    postThumbnailUrl: "",
+  });
+});
+
+
+// =================================================================
+// ▼▼▼ 13. Firestoreの投稿をAlgoliaに同期する関数 ▼▼▼
+// =================================================================
+exports.syncPostToAlgolia = onDocumentWritten({
+  document: "posts/{postId}",
+  region: "asia-northeast1",
+}, async (event) => {
+  // Algoliaが初期化されていない場合はスキップ
+  if (!algoliaIndex) {
+    console.log("Algolia not configured, skipping sync");
+    return null;
+  }
+
+  const postId = event.params.postId;
+
+  try {
+    // ドキュメントが削除された場合
+    if (!event.data.after.exists) {
+      await algoliaIndex.deleteObject(postId);
+      console.log(`Algolia record deleted for postId: ${postId}`);
+      return null;
+    }
+
+    // ドキュメントが作成または更新された場合
+    const postData = event.data.after.data();
+
+    // 必要なフィールドが存在するかチェック
+    if (!postData.createdAt || !postData.location) {
+      console.log(`Missing required fields for postId: ${postId}`);
+      return null;
+    }
+
+    const record = {
+      objectID: postId,
+      userId: postData.userId,
+      userName: postData.userName,
+      imageUrl: postData.imageUrl,
+      thumbnailUrl: postData.thumbnailUrl,
+      createdAt: postData.createdAt.toDate().getTime(), 
+      squidSize: postData.squidSize,
+      weight: postData.weight,
+      egiName: postData.egiName,
+      egiMaker: postData.egiMaker,
+      weather: postData.weather,
+      airTemperature: postData.airTemperature,
+      waterTemperature: postData.waterTemperature,
+      likeCount: postData.likeCount || 0,
+      commentCount: postData.commentCount || 0,
+      _geoloc: {
+        lat: postData.location.latitude,
+        lng: postData.location.longitude,
+      },
+    };
+
+    await algoliaIndex.saveObject(record);
+    console.log(`Algolia record saved for postId: ${postId}`);
+    
+  } catch (error) {
+    console.error(`Error syncing to Algolia for postId ${postId}:`, error);
+  }
 });
