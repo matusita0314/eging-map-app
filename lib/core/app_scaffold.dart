@@ -6,7 +6,7 @@ import '../features/home_feed/timeline_page.dart';
 import '../features/map/map_page.dart';
 import '../features/account/account.dart';
 import '../features/tournament/tournament_page.dart';
-import '../features/chat/chat_list_page.dart';
+import '../features/chat/chat_page.dart';
 import '../features/challenge/challenge_page.dart';
 import '../providers/chat_provider.dart';
 
@@ -31,7 +31,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
       const MapPage(),
       const TournamentPage(),
       const ChallengePage(),
-      const ChatListPage(),
+      const ChatPage(),
       MyPage(userId: _user.uid),
     ];
   }

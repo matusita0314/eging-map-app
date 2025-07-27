@@ -29,6 +29,7 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const {onRequest} = require("firebase-functions/v2/https");
+const { onCall } = require("firebase-functions/v2/https");
 
 // =================================================================
 // ▼▼▼ 汎用的な通知作成関数 (プッシュ通知送信機能付き) ▼▼▼
@@ -517,7 +518,7 @@ exports.createNotificationOnSave = onDocumentCreated({
 });
 
 // =================================================================
-// ▼▼▼ 10. フォローされた時に通知を作成する関数 (新規追加) ▼▼▼
+// ▼▼▼ 10. フォローされた時に通知を作成する関数 ▼▼▼
 // =================================================================
 exports.createNotificationOnFollow = onDocumentCreated({
   document: "users/{followedId}/followers/{followerId}",
@@ -548,103 +549,67 @@ exports.createNotificationOnFollow = onDocumentCreated({
     postThumbnailUrl: "", // フォロワーのアイコンを表示しても良い
   });
 });
-
 // =================================================================
-// ▼▼▼ 12. 新しいメッセージ受信時に通知を作成・送信する関数 ▼▼▼
+// ▼▼▼ 12. ユーザー情報をAlgoliaに同期する関数 ▼▼▼
 // =================================================================
-exports.createNotificationOnNewMessage = onDocumentCreated({
-  document: "chat_rooms/{chatRoomId}/messages/{messageId}",
+exports.syncUserToAlgolia = onDocumentWritten({
+  document: "users/{userId}",
   region: "asia-northeast1",
 }, async (event) => {
-  const chatRoomId = event.params.chatRoomId;
-  const messageData = event.data.data();
-  if (!messageData) {
-    return console.log("No message data found.");
+  initializeAlgolia();
+  if (!usersIndex) {
+    console.log("Algolia (users) not configured, skipping sync");
+    return null;
   }
-
-  const senderId = messageData.senderId;
-  const chatRoomRef = db.collection("chat_rooms").doc(chatRoomId);
-  const chatRoomSnap = await chatRoomRef.get();
-  if (!chatRoomSnap.exists) {
-    return console.log(`Chat room ${chatRoomId} not found.`);
+  const userId = event.params.userId;
+  const userDoc = event.data.after;
+  if (!userDoc.exists) {
+    await usersIndex.deleteObject(userId);
+    console.log(`Algolia user record deleted for userId: ${userId}`);
+    return null;
   }
-
-  const chatRoomData = chatRoomSnap.data();
-  const userIds = chatRoomData.userIds || [];
-  
-  // 送信者ではない方のユーザーIDを取得 (1対1チャットを想定)
-  const recipientId = userIds.find((id) => id !== senderId);
-  if (!recipientId) {
-    return console.log("Recipient not found in chat room.");
-  }
-  
-  // ★★★【未読数カウントアップ処理】★★★
-  // チャットルームのunreadCountフィールドで、受信者のカウントを1増やす
-  await chatRoomRef.update({
-    [`unreadCount.${recipientId}`]: admin.firestore.FieldValue.increment(1),
-  });
-
-  // 送信者のユーザー情報を取得（通知に名前を表示するため）
-  const senderSnap = await db.collection("users").doc(senderId).get();
-  if (!senderSnap.exists) {
-    return console.log(`Sender user ${senderId} not found.`);
-  }
-  const senderName = senderSnap.data().displayName || "名無しさん";
-
-  // 汎用通知作成関数を呼び出す
-  return createNotification(recipientId, {
-    type: "dm", // 通知タイプを 'dm' (Direct Message) とする
-    fromUserName: senderName,
-    fromUserId: senderId,
-    commentText: messageData.text, // メッセージ本文を通知に含める
-    // DM通知は特定の投稿に紐づかないため、以下は空にする
-    chatRoomId: chatRoomId,
-    fromUserPhotoUrl: senderSnap.data().photoUrl || "",
-    postId: "", 
-    postThumbnailUrl: "",
-  });
+  const userData = userDoc.data();
+  const record = {
+    objectID: userId,
+    displayName: userData.displayName,
+    photoUrl: userData.photoUrl,
+    introduction: userData.introduction,
+  };
+  await usersIndex.saveObject(record);
+  console.log(`Algolia user record saved for userId: ${userId}`);
 });
 
-
 // =================================================================
-// ▼▼▼ 13. Firestoreの投稿をAlgoliaに同期する関数 ▼▼▼
+// ▼▼▼ 13. 投稿をAlgoliaに同期する関数（修正済み） ▼▼▼
 // =================================================================
 exports.syncPostToAlgolia = onDocumentWritten({
   document: "posts/{postId}",
   region: "asia-northeast1",
 }, async (event) => {
-  // Algoliaが初期化されていない場合はスキップ
-  if (!algoliaIndex) {
-    console.log("Algolia not configured, skipping sync");
+  initializeAlgolia();
+  if (!postsIndex) {
+    console.log("Algolia (posts) not configured, skipping sync");
     return null;
   }
-
   const postId = event.params.postId;
-
   try {
-    // ドキュメントが削除された場合
     if (!event.data.after.exists) {
-      await algoliaIndex.deleteObject(postId);
+      await postsIndex.deleteObject(postId);
       console.log(`Algolia record deleted for postId: ${postId}`);
       return null;
     }
-
-    // ドキュメントが作成または更新された場合
     const postData = event.data.after.data();
-
-    // 必要なフィールドが存在するかチェック
     if (!postData.createdAt || !postData.location) {
       console.log(`Missing required fields for postId: ${postId}`);
       return null;
     }
-
     const record = {
       objectID: postId,
       userId: postData.userId,
       userName: postData.userName,
       imageUrl: postData.imageUrl,
       thumbnailUrl: postData.thumbnailUrl,
-      createdAt: postData.createdAt.toDate().getTime(), 
+      createdAt: postData.createdAt.toDate().getTime(),
       squidSize: postData.squidSize,
       weight: postData.weight,
       egiName: postData.egiName,
@@ -662,10 +627,8 @@ exports.syncPostToAlgolia = onDocumentWritten({
       squidType: postData.squidType,
       timeOfDay: postData.timeOfDay,
     };
-
-    await algoliaIndex.saveObject(record);
+    await postsIndex.saveObject(record);
     console.log(`Algolia record saved for postId: ${postId}`);
-    
   } catch (error) {
     console.error(`Error syncing to Algolia for postId ${postId}:`, error);
   }
