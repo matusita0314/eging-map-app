@@ -16,7 +16,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'features/chat/talk_page.dart';
 import 'features/account/account.dart';
 
-// バックグラウンドで通知を受信した際のハンドラ
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -32,7 +31,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // FCMサービスをインスタンス化
   final fcmService = FcmService();
   await fcmService.createNotificationChannel();
   await fcmService.initializeLocalNotifications();
@@ -40,17 +38,14 @@ void main() async {
   await FirebaseMessaging.instance.requestPermission();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // FCMのリスナーを設定
   _setupFcmListeners();
 
   runApp(const ProviderScope(child: MyApp()));
 }
 
-// FCMリスナー設定用のトップレベル関数
 void _setupFcmListeners() {
   final localNotifications = FlutterLocalNotificationsPlugin();
 
-  // 1. アプリがフォアグラウンドのときに通知を受信した場合の処理
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     print('--- フォアグラウンドでメッセージを受信 ---');
     final notification = message.notification;
@@ -58,7 +53,6 @@ void _setupFcmListeners() {
       print('タイトル: ${notification.title}');
       print('本文: ${notification.body}');
 
-      // ローカル通知として画面上部にバナー表示する
       localNotifications.show(
         notification.hashCode,
         notification.title,
@@ -84,14 +78,11 @@ void _setupFcmListeners() {
     if (type == 'follow') {
       final fromUserId = message.data['fromUserId'];
       if (fromUserId != null) {
-        print('フォロワーID: $fromUserId のプロフィールページに遷移します。');
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (_) => MyPage(userId: fromUserId)),
         );
       }
     } else if (postId != null && postId.isNotEmpty) {
-      // それ以外の通知（いいね、コメント等）の場合：投稿詳細ページへ
-      print('投稿ID: $postId の詳細ページに遷移します。');
       try {
         final postDoc = await FirebaseFirestore.instance
             .collection('posts')

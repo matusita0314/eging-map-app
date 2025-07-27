@@ -54,7 +54,7 @@ dependencies:
   firebase_messaging: ^15.0.1
   flutter_local_notifications: ^17.2.1
   flutter_riverpod: ^2.5.1
-  algoliasearch: ^1.34.1
+  algolia_helper_flutter: ^1.2.0
   # google_maps_cluster_manager: ^3.0.0
 dev_dependencies:
   flutter_test:

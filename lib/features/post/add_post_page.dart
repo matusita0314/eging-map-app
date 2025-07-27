@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:typed_data';
+import 'package:geocoding/geocoding.dart';
 
 class AddPostPage extends StatefulWidget {
   final LatLng location;
@@ -22,6 +23,7 @@ class _AddPostPageState extends State<AddPostPage> {
   Uint8List? _imageBytes;
   bool _isUploading = false;
   String? _selectedWeather;
+  String? _selectedSquidType;
   double _airTemperature = 15.0;
   double _waterTemperature = 15.0;
 
@@ -75,6 +77,26 @@ class _AddPostPageState extends State<AddPostPage> {
       final newPostDoc = postsRef.doc();
       final postId = newPostDoc.id;
 
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        widget.location.latitude,
+        widget.location.longitude,
+      );
+      String region = "不明";
+      if (placemarks.isNotEmpty) {
+        region = placemarks[0].administrativeArea ?? "不明";
+      }
+
+      // 投稿時刻から時間帯を判定
+      final hour = DateTime.now().hour;
+      String timeOfDay;
+      if (hour >= 5 && hour < 11) {
+        timeOfDay = "朝";
+      } else if (hour >= 11 && hour < 17) {
+        timeOfDay = "昼";
+      } else {
+        timeOfDay = "夜";
+      }
+
       // ▼▼▼ 2. 取得した投稿IDをファイル名にして、画像をアップロードする ▼▼▼
       final imageFileName = '$postId.jpg'; // ファイル名を投稿IDに
       final ref = FirebaseStorage.instance.ref().child(
@@ -82,9 +104,6 @@ class _AddPostPageState extends State<AddPostPage> {
       );
       final metadata = SettableMetadata(contentType: "image/jpeg");
       await ref.putData(_imageBytes!, metadata);
-
-      // ★★ 画像URLの取得は不要になる ★★
-      // Cloud FunctionsがURLを書き込んでくれるため、ここでは待たない
 
       // ▼▼▼ 3. テキスト情報だけで、Firestoreにドキュメントを書き込む ▼▼▼
       //     imageUrlとthumbnailUrlは空の状態で作成される
@@ -114,6 +133,9 @@ class _AddPostPageState extends State<AddPostPage> {
         'commentCount': 0,
         'imageUrl': '', // 最初は空文字
         'thumbnailUrl': '', // 最初は空文字
+        'region': region, // 地域
+        'squidType': _selectedSquidType, // イカの種類
+        'timeOfDay': timeOfDay, // 時間帯
       });
 
       if (mounted) {
@@ -231,6 +253,26 @@ class _AddPostPageState extends State<AddPostPage> {
               const SizedBox(height: 24),
               // 各種フォームフィールド
               _buildSectionTitle('基本情報'),
+              DropdownButtonFormField<String>(
+                value: _selectedSquidType,
+                decoration: const InputDecoration(
+                  labelText: 'イカの種類 *',
+                  prefixIcon: Icon(Icons.waves),
+                ),
+                hint: const Text('釣れたイカの種類を選択'),
+                items: ['アオリイカ', 'コウイカ', 'ヤリイカ', 'スルメイカ', 'ヒイカ', 'モンゴウイカ']
+                    .map(
+                      (String value) => DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (String? newValue) =>
+                    setState(() => _selectedSquidType = newValue),
+                validator: (value) => value == null ? '必須項目です' : null,
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _egiNameController,
                 decoration: const InputDecoration(

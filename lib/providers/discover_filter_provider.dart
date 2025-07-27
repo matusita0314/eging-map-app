@@ -1,39 +1,113 @@
+import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import '../models/sort_by.dart';
 
-part 'discover_filter_provider.g.dart'; // build_runnerで自動生成
+part 'discover_filter_provider.g.dart';
 
-// フィルターの状態を保持するクラス
 class DiscoverFilterState {
-  // 並び替え順（デフォルトは新着順）
-  final String sortBy;
-  // TODO: ここに他のフィルター条件（地域、サイズなど）を追加していく
+  final SortBy sortBy;
+  final String? prefecture;
+  final Set<String> sizeRanges;
+  final Set<String> squidTypes;
+  final int? periodDays;
+  final Set<String> weather;
+  final Set<String> timeOfDay;
+  // final RangeValues? airTempRange; // ← 削除
+  // final RangeValues? waterTempRange; // ← 削除
 
   DiscoverFilterState({
-    this.sortBy = 'createdAt_desc', // Algoliaのインデックス名と合わせる
+    this.sortBy = SortBy.createdAt,
+    this.prefecture,
+    this.sizeRanges = const {},
+    this.squidTypes = const {},
+    this.periodDays,
+    this.weather = const {},
+    this.timeOfDay = const {},
   });
 
   DiscoverFilterState copyWith({
-    String? sortBy,
+    SortBy? sortBy,
+    String? prefecture,
+    bool clearPrefecture = false,
+    Set<String>? sizeRanges,
+    Set<String>? squidTypes,
+    int? periodDays,
+    bool clearPeriodDays = false,
+    Set<String>? weather,
+    Set<String>? timeOfDay,
   }) {
     return DiscoverFilterState(
       sortBy: sortBy ?? this.sortBy,
+      prefecture: clearPrefecture ? null : prefecture ?? this.prefecture,
+      sizeRanges: sizeRanges ?? this.sizeRanges,
+      squidTypes: squidTypes ?? this.squidTypes,
+      periodDays: clearPeriodDays ? null : periodDays ?? this.periodDays,
+      weather: weather ?? this.weather,
+      timeOfDay: timeOfDay ?? this.timeOfDay,
     );
   }
 }
 
-// フィルターの状態を操作・管理するNotifier
 @Riverpod(keepAlive: true)
 class DiscoverFilterNotifier extends _$DiscoverFilterNotifier {
   @override
   DiscoverFilterState build() {
-    // 初期状態
     return DiscoverFilterState();
   }
 
-  // 並び替え順を更新するメソッド
-  void updateSortBy(String newSortBy) {
+  void updateSortBy(SortBy newSortBy) {
     state = state.copyWith(sortBy: newSortBy);
   }
 
-  // TODO: 他のフィルターを更新するメソッドもここに追加していく
+  void setPrefecture(String? p) {
+    state = state.copyWith(prefecture: p, clearPrefecture: p == null);
+  }
+
+  void toggleSizeRange(String r) {
+    final newSet = Set<String>.from(state.sizeRanges);
+    if (newSet.contains(r)) {
+      newSet.remove(r);
+    } else {
+      newSet.add(r);
+    }
+    state = state.copyWith(sizeRanges: newSet);
+  }
+
+  void toggleSquidType(String t) {
+    final newSet = Set<String>.from(state.squidTypes);
+    if (newSet.contains(t)) {
+      newSet.remove(t);
+    } else {
+      newSet.add(t);
+    }
+    state = state.copyWith(squidTypes: newSet);
+  }
+
+  void setPeriod(int? d) {
+    state = state.copyWith(periodDays: d, clearPeriodDays: d == null);
+  }
+
+  void toggleWeather(String w) {
+    final newSet = Set<String>.from(state.weather);
+    if (newSet.contains(w)) {
+      newSet.remove(w);
+    } else {
+      newSet.add(w);
+    }
+    state = state.copyWith(weather: newSet);
+  }
+
+  void toggleTimeOfDay(String t) {
+    final newSet = Set<String>.from(state.timeOfDay);
+    if (newSet.contains(t)) {
+      newSet.remove(t);
+    } else {
+      newSet.add(t);
+    }
+    state = state.copyWith(timeOfDay: newSet);
+  }
+
+  void resetFilters() {
+    state = DiscoverFilterState();
+  }
 }

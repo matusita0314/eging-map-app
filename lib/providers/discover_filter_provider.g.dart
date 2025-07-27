@@ -7,7 +7,7 @@ part of 'discover_filter_provider.dart';
 // **************************************************************************
 
 String _$discoverFilterNotifierHash() =>
-    r'57898473a83d29b9432bfedb41836df7c22c8bf8';
+    r'6b2030e2e616dc20c9bb7bbb5c121b9c7a6da338';
 
 /// See also [DiscoverFilterNotifier].
 @ProviderFor(DiscoverFilterNotifier)

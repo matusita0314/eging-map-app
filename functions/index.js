@@ -4,6 +4,9 @@ const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const admin = require("firebase-admin");
 const algoliasearch = require("algoliasearch");
 
+// --- ▼▼▼【ここから修正】v2の正しい書き方 ▼▼▼ ---
+const { defineString } = require("firebase-functions/params");
+
 // Firebase Admin初期化（重複初期化を防ぐ）
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -12,23 +15,14 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const storage = admin.storage();
 
-// 環境変数からAPIキーを初期化（エラーハンドリング改善）
-let algoliaClient;
-let algoliaIndex;
+// パラメータとして環境変数を定義
+const algoliaAppId = defineString("ALGOLIA_APP_ID");
+const algoliaAdminKey = defineString("ALGOLIA_ADMIN_KEY");
 
-try {
-  const ALGOLIA_APP_ID = functions.config().algolia?.app_id;
-  const ALGOLIA_ADMIN_KEY = functions.config().algolia?.api_key;
-  
-  if (!ALGOLIA_APP_ID || !ALGOLIA_ADMIN_KEY) {
-    console.warn("Algolia configuration not found. Algolia-related functions will be disabled.");
-  } else {
-    algoliaClient = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_ADMIN_KEY);
-    algoliaIndex = algoliaClient.initIndex("posts");
-  }
-} catch (error) {
-  console.warn("Failed to initialize Algolia:", error);
-}
+// Algoliaクライアントを初期化
+const algoliaClient = algoliasearch(algoliaAppId.value(), algoliaAdminKey.value());
+const algoliaIndex = algoliaClient.initIndex("posts");
+// --- ▲▲▲【ここまで修正】▲▲▲ ---
 
 const sharp = require("sharp");
 const path = require("path");
@@ -664,6 +658,9 @@ exports.syncPostToAlgolia = onDocumentWritten({
         lat: postData.location.latitude,
         lng: postData.location.longitude,
       },
+      region: postData.region,
+      squidType: postData.squidType,
+      timeOfDay: postData.timeOfDay,
     };
 
     await algoliaIndex.saveObject(record);

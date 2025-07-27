@@ -182,13 +182,13 @@ class PostGridCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'イカ ${realTimePost.squidSize} cm',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+  '${realTimePost.squidType} ${realTimePost.squidSize} cm',
+  style: const TextStyle(
+    fontWeight: FontWeight.bold,
+    fontSize: 16,
+  ),
+  overflow: TextOverflow.ellipsis,
+),
                   const SizedBox(height: 2),
                   Text(
                     'ヒットエギ: ${realTimePost.egiName}',

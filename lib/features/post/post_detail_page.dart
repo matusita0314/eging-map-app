@@ -308,12 +308,12 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'イカ ${widget.post.squidSize} cm',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+        '${widget.post.squidType} ${widget.post.squidSize} cm',
+        style: const TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
                       const SizedBox(height: 4),
                       Text(
                         '投稿日時: ${DateFormat('yyyy.MM.dd HH:mm').format(widget.post.createdAt)}',
