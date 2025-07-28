@@ -318,8 +318,8 @@ class MyPage extends ConsumerWidget {
         MaterialPageRoute(
           builder: (context) => TalkPage(
             chatRoomId: chatRoomId,
-            otherUserName: otherUserData['displayName'] ?? '名無しさん',
-            otherUserPhotoUrl: otherUserData['photoUrl'] ?? '',
+            chatTitle: otherUserData['displayName'] ?? '名無しさん',
+            isGroupChat: false,
           ),
         ),
       );

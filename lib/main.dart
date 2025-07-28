@@ -10,8 +10,6 @@ import 'core/launch_page.dart';
 import 'core/navigator_key.dart';
 import 'features/post/post_detail_page.dart';
 import 'models/post_model.dart';
-import 'features/account/follower_list_page.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'features/chat/talk_page.dart';
 import 'features/account/account.dart';
@@ -111,8 +109,8 @@ void _setupFcmListeners() {
           MaterialPageRoute(
             builder: (_) => TalkPage(
               chatRoomId: chatRoomId,
-              otherUserName: otherUserName,
-              otherUserPhotoUrl: otherUserPhotoUrl ?? '',
+              chatTitle: otherUserName,
+              isGroupChat: false,
             ),
           ),
         );

@@ -54,8 +54,8 @@ class _NotificationListViewState extends State<NotificationListView> {
           MaterialPageRoute(
             builder: (context) => TalkPage(
               chatRoomId: notification.chatRoomId!,
-              otherUserName: notification.fromUserName,
-              otherUserPhotoUrl: notification.fromUserPhotoUrl ?? '',
+              chatTitle: notification.fromUserName,
+              isGroupChat: false,
             ),
           ),
         );

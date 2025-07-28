@@ -1,30 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
 
-// メッセージのデータモデル
+// メッセージのデータモデルを修正
 class Message {
   final String text;
   final String senderId;
+  final String senderName;
+  final String senderPhotoUrl;
   final DateTime createdAt;
 
   Message.fromFirestore(DocumentSnapshot doc)
       : text = (doc.data() as Map<String, dynamic>)['text'] ?? '',
         senderId = (doc.data() as Map<String, dynamic>)['senderId'] ?? '',
+        senderName = (doc.data() as Map<String, dynamic>)['senderName'] ?? '名無しさん',
+        senderPhotoUrl = (doc.data() as Map<String, dynamic>)['senderPhotoUrl'] ?? '',
         createdAt = ((doc.data() as Map<String, dynamic>)['createdAt'] as Timestamp).toDate();
 }
 
+
 class TalkPage extends StatefulWidget {
   final String chatRoomId;
-  final String otherUserName;
-  final String otherUserPhotoUrl;
+  final String chatTitle; // otherUserNameから変更
+  final bool isGroupChat; // 追加
 
   const TalkPage({
     super.key,
     required this.chatRoomId,
-    required this.otherUserName,
-    required this.otherUserPhotoUrl,
+    required this.chatTitle,
+    required this.isGroupChat,
   });
 
   @override
@@ -38,20 +42,7 @@ class _TalkPageState extends State<TalkPage> {
   @override
   void initState() {
     super.initState();
-    // この画面が開かれた瞬間に、既読にする処理を呼び出します
     _markAsRead();
-  }
-
-  /// 自分の未読数を0に更新して「既読」にするメソッド
-  Future<void> _markAsRead() async {
-    final chatRoomRef = FirebaseFirestore.instance
-        .collection('chat_rooms')
-        .doc(widget.chatRoomId);
-
-    // ドキュメント内の、自分のIDに対応するunreadCountフィールドだけを0に更新します
-    await chatRoomRef.update({
-      'unreadCount.${_currentUser.uid}': 0,
-    });
   }
 
   @override
@@ -60,34 +51,29 @@ class _TalkPageState extends State<TalkPage> {
     super.dispose();
   }
 
-  // メッセージを送信する処理
+  Future<void> _markAsRead() async {
+    final chatRoomRef = FirebaseFirestore.instance.collection('chat_rooms').doc(widget.chatRoomId);
+    await chatRoomRef.update({'unreadCount.${_currentUser.uid}': 0});
+  }
+
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
-    if (text.isEmpty) {
-      return;
-    }
+    if (text.isEmpty) return;
 
-    final messageRef = FirebaseFirestore.instance
-        .collection('chat_rooms')
-        .doc(widget.chatRoomId)
-        .collection('messages');
-    
-    final chatRoomRef = FirebaseFirestore.instance
-        .collection('chat_rooms')
-        .doc(widget.chatRoomId);
+    final messageRef = FirebaseFirestore.instance.collection('chat_rooms').doc(widget.chatRoomId).collection('messages');
+    final chatRoomRef = FirebaseFirestore.instance.collection('chat_rooms').doc(widget.chatRoomId);
 
-    // 入力内容をクリア
     _messageController.clear();
 
-    // 2つの書き込み処理を同時に行う
+    // メッセージに送信者の名前と写真URLも含める
     await FirebaseFirestore.instance.runTransaction((transaction) async {
-      // 1. 新しいメッセージを追加
       transaction.set(messageRef.doc(), {
         'text': text,
         'senderId': _currentUser.uid,
-        'createdAt': FieldValue.serverTimestamp(), // サーバー側のタイムスタンプを利用
+        'senderName': _currentUser.displayName ?? '名無しさん',
+        'senderPhotoUrl': _currentUser.photoURL ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
       });
-      // 2. チャットルームの最終メッセージ情報を更新
       transaction.update(chatRoomRef, {
         'lastMessage': text,
         'lastMessageAt': FieldValue.serverTimestamp(),
@@ -98,17 +84,9 @@ class _TalkPageState extends State<TalkPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.otherUserName),
-        actions: [
-          IconButton(icon: const Icon(Icons.history), onPressed: () {}), // 履歴(時計)
-          IconButton(icon: const Icon(Icons.call_outlined), onPressed: () {}), // 電話
-          IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}), // その他
-        ],
-      ),
+      appBar: AppBar(title: Text(widget.chatTitle)),
       body: Column(
         children: [
-          // メッセージ一覧
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -122,37 +100,32 @@ class _TalkPageState extends State<TalkPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('メッセージを送信してみましょう！'));
+                  return Center(child: Text('${widget.chatTitle}との最初のメッセージを送信しましょう！'));
                 }
-
                 final messages = snapshot.data!.docs;
-
                 return ListView.builder(
-                  padding: const EdgeInsets.all(8.0), // 全体に少し余白
+                  padding: const EdgeInsets.all(8.0),
                   reverse: true,
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final message = Message.fromFirestore(messages[index]);
                     final isMe = message.senderId == _currentUser.uid;
-                    // ▼▼▼ 相手のアイコンを表示するために修正 ▼▼▼
                     return _MessageBubble(
                       message: message,
                       isMe: isMe,
-                      otherUserPhotoUrl: widget.otherUserPhotoUrl,
+                      isGroupChat: widget.isGroupChat,
                     );
                   },
                 );
               },
             ),
           ),
-          // メッセージ入力欄
           _buildMessageInputField(),
         ],
       ),
     );
   }
 
-  // メッセージ入力欄のウィジェット
   Widget _buildMessageInputField() {
     return SafeArea(
       child: Container(
@@ -160,11 +133,7 @@ class _TalkPageState extends State<TalkPage> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 4,
-              offset: const Offset(0, -2),
-            ),
+            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2)),
           ],
         ),
         child: Row(
@@ -172,17 +141,11 @@ class _TalkPageState extends State<TalkPage> {
             Expanded(
               child: TextField(
                 controller: _messageController,
-                decoration: const InputDecoration(
-                  hintText: 'メッセージを入力...',
-                  border: InputBorder.none,
-                ),
+                decoration: const InputDecoration(hintText: 'メッセージを入力...', border: InputBorder.none),
                 onSubmitted: (_) => _sendMessage(),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.send),
-              onPressed: _sendMessage,
-            ),
+            IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
           ],
         ),
       ),
@@ -190,34 +153,53 @@ class _TalkPageState extends State<TalkPage> {
   }
 }
 
-// メッセージの吹き出しUI
+// メッセージの吹き出しUIを修正
 class _MessageBubble extends StatelessWidget {
   final Message message;
   final bool isMe;
-  final String otherUserPhotoUrl;
+  final bool isGroupChat;
 
-  const _MessageBubble({required this.message, required this.isMe, required this.otherUserPhotoUrl});
+  const _MessageBubble({
+    required this.message,
+    required this.isMe,
+    required this.isGroupChat,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final showAvatarAndName = !isMe && isGroupChat;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.7,
+          if (showAvatarAndName)
+            Padding(
+              padding: const EdgeInsets.only(left: 48.0, bottom: 2.0),
+              child: Text(message.senderName, style: const TextStyle(fontSize: 12, color: Colors.grey)),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-            decoration: BoxDecoration(
-              color: isMe ? Colors.blue : Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(16.0),
-            ),
-            child: Text(
-              message.text,
-              style: TextStyle(color: isMe ? Colors.white : Colors.black87),
-            ),
+          Row(
+            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (showAvatarAndName)
+                CircleAvatar(
+                  radius: 16,
+                  backgroundImage: message.senderPhotoUrl.isNotEmpty ? NetworkImage(message.senderPhotoUrl) : null,
+                  child: message.senderPhotoUrl.isEmpty ? const Icon(Icons.person, size: 16) : null,
+                ),
+              if (showAvatarAndName) const SizedBox(width: 8),
+              Container(
+                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                decoration: BoxDecoration(
+                  color: isMe ? Colors.blue : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(16.0),
+                ),
+                child: Text(message.text, style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
+              ),
+            ],
           ),
         ],
       ),

@@ -66,7 +66,10 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
   @override
   void initState() {
     super.initState();
-    _fetchOtherUserData();
+    final isGroup = (widget.chatRoomData['type'] ?? 'dm') == 'group';
+    if (!isGroup) {
+      _fetchOtherUserData();
+    }
   }
 
   void _fetchOtherUserData() {
@@ -79,20 +82,71 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
       });
     }
   }
+  
+  Widget _buildTrailing(String time, int unreadCount) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(time, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        const SizedBox(height: 4),
+        if (unreadCount > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(12)),
+            child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+          )
+        else
+          const SizedBox(height: 18),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (_otherUserDoc == null || !_otherUserDoc!.exists) {
-      return const ListTile(title: Text(''));
-    }
+    final chatType = widget.chatRoomData['type'] ?? 'dm';
+    final isGroup = chatType == 'group';
 
-    final otherUserData = _otherUserDoc!.data() as Map<String, dynamic>;
-    final lastMessage = widget.chatRoomData['lastMessage'] as String? ?? 'まだメッセージはありません';
+    final lastMessage = widget.chatRoomData['lastMessage'] as String? ?? '';
     final timestamp = widget.chatRoomData['lastMessageAt'] as Timestamp?;
     final lastMessageTime = timestamp != null ? DateFormat('HH:mm').format(timestamp.toDate()) : '';
     final unreadMap = widget.chatRoomData['unreadCount'] as Map<String, dynamic>?;
     final unreadCount = unreadMap?[widget.currentUserId] as int? ?? 0;
 
+    if (isGroup) {
+      final groupName = widget.chatRoomData['groupName'] ?? 'グループ名なし';
+      final groupPhotoUrl = widget.chatRoomData['groupPhotoUrl'] ?? '';
+
+      return ListTile(
+        leading: CircleAvatar(
+          backgroundImage: groupPhotoUrl.isNotEmpty ? NetworkImage(groupPhotoUrl) : null,
+          child: groupPhotoUrl.isEmpty ? const Icon(Icons.group) : null,
+        ),
+        title: Text(groupName, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: _buildTrailing(lastMessageTime, unreadCount),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => TalkPage(
+                chatRoomId: widget.chatRoomId,
+                chatTitle: groupName,
+                isGroupChat: true,
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    if (_otherUserDoc == null) {
+      return const ListTile(title: Text('')); // 読み込み中のチラつき防止
+    }
+    if (!_otherUserDoc!.exists) {
+      return const ListTile(title: Text('不明なユーザー'));
+    }
+    
+    final otherUserData = _otherUserDoc!.data() as Map<String, dynamic>;
     return ListTile(
       leading: CircleAvatar(
         backgroundImage: (otherUserData['photoUrl'] as String?).toString().isNotEmpty
@@ -104,29 +158,14 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
       ),
       title: Text(otherUserData['displayName'] ?? '名無しさん', style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(lastMessageTime, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          const SizedBox(height: 4),
-          if (unreadCount > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(12)),
-              child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-            )
-          else
-            const SizedBox(height: 18), 
-        ],
-      ),
+      trailing: _buildTrailing(lastMessageTime, unreadCount),
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => TalkPage(
               chatRoomId: widget.chatRoomId,
-              otherUserName: otherUserData['displayName'] ?? '名無しさん',
-              otherUserPhotoUrl: otherUserData['photoUrl'] ?? '',
+              chatTitle: otherUserData['displayName'] ?? '名無しさん',
+              isGroupChat: false,
             ),
           ),
         );

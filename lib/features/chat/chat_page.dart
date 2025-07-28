@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../widgets/common_app_bar.dart';
-
-// 各タブの中身となるウィジェットをインポート
 import 'tabs/friends_tab_view.dart';
 import 'tabs/talks_tab_view.dart';
 import 'tabs/user_search_tab_view.dart';
+import 'create_group_page.dart';
+
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -34,6 +34,17 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
     return Scaffold(
       appBar: CommonAppBar(
         title: const Text('チャット'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.group_add_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const CreateGroupPage()),
+              );
+            },
+            tooltip: '新しいグループを作成',
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           // ▼▼▼ タブの定義を3つに変更 ▼▼▼
