@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../providers/following_provider.dart';
 import '../../account/account.dart';
@@ -58,7 +59,7 @@ class _UserTile extends StatelessWidget {
 
         return ListTile(
           leading: CircleAvatar(
-            backgroundImage: userPhotoUrl.isNotEmpty ? NetworkImage(userPhotoUrl) : null,
+            backgroundImage: userPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(userPhotoUrl) : null,
             child: userPhotoUrl.isEmpty ? const Icon(Icons.person) : null,
           ),
           title: Text(userName),

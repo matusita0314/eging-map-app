@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:algolia_helper_flutter/algolia_helper_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../providers/following_provider.dart';
 import '../../account/account.dart';
@@ -127,7 +128,7 @@ class _UserSearchTabViewState extends ConsumerState<UserSearchTabView> {
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundImage: user.photoUrl.isNotEmpty
-                          ? NetworkImage(user.photoUrl)
+                          ? CachedNetworkImageProvider(user.photoUrl)
                           : null,
                       child: user.photoUrl.isEmpty
                           ? const Icon(Icons.person)

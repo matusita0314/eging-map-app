@@ -1,12 +1,12 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'account.dart';
+part of 'user_provider.dart';
 
 // **************************************************************************
 // RiverpodGenerator
 // **************************************************************************
 
-String _$userDocStreamHash() => r'994b8e7f36180da22c898e453c77268de31e6662';
+String _$userHash() => r'30e283c9cb852cd8d89e251bfb180d0fa3cfc134';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -29,24 +29,22 @@ class _SystemHash {
   }
 }
 
-/// See also [userDocStream].
-@ProviderFor(userDocStream)
-const userDocStreamProvider = UserDocStreamFamily();
+/// See also [user].
+@ProviderFor(user)
+const userProvider = UserFamily();
 
-/// See also [userDocStream].
-class UserDocStreamFamily extends Family<AsyncValue<DocumentSnapshot>> {
-  /// See also [userDocStream].
-  const UserDocStreamFamily();
+/// See also [user].
+class UserFamily extends Family<AsyncValue<UserModel>> {
+  /// See also [user].
+  const UserFamily();
 
-  /// See also [userDocStream].
-  UserDocStreamProvider call(String userId) {
-    return UserDocStreamProvider(userId);
+  /// See also [user].
+  UserProvider call(String userId) {
+    return UserProvider(userId);
   }
 
   @override
-  UserDocStreamProvider getProviderOverride(
-    covariant UserDocStreamProvider provider,
-  ) {
+  UserProvider getProviderOverride(covariant UserProvider provider) {
     return call(provider.userId);
   }
 
@@ -62,28 +60,26 @@ class UserDocStreamFamily extends Family<AsyncValue<DocumentSnapshot>> {
       _allTransitiveDependencies;
 
   @override
-  String? get name => r'userDocStreamProvider';
+  String? get name => r'userProvider';
 }
 
-/// See also [userDocStream].
-class UserDocStreamProvider
-    extends AutoDisposeStreamProvider<DocumentSnapshot> {
-  /// See also [userDocStream].
-  UserDocStreamProvider(String userId)
+/// See also [user].
+class UserProvider extends FutureProvider<UserModel> {
+  /// See also [user].
+  UserProvider(String userId)
     : this._internal(
-        (ref) => userDocStream(ref as UserDocStreamRef, userId),
-        from: userDocStreamProvider,
-        name: r'userDocStreamProvider',
+        (ref) => user(ref as UserRef, userId),
+        from: userProvider,
+        name: r'userProvider',
         debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
             ? null
-            : _$userDocStreamHash,
-        dependencies: UserDocStreamFamily._dependencies,
-        allTransitiveDependencies:
-            UserDocStreamFamily._allTransitiveDependencies,
+            : _$userHash,
+        dependencies: UserFamily._dependencies,
+        allTransitiveDependencies: UserFamily._allTransitiveDependencies,
         userId: userId,
       );
 
-  UserDocStreamProvider._internal(
+  UserProvider._internal(
     super._createNotifier, {
     required super.name,
     required super.dependencies,
@@ -96,13 +92,11 @@ class UserDocStreamProvider
   final String userId;
 
   @override
-  Override overrideWith(
-    Stream<DocumentSnapshot> Function(UserDocStreamRef provider) create,
-  ) {
+  Override overrideWith(FutureOr<UserModel> Function(UserRef provider) create) {
     return ProviderOverride(
       origin: this,
-      override: UserDocStreamProvider._internal(
-        (ref) => create(ref as UserDocStreamRef),
+      override: UserProvider._internal(
+        (ref) => create(ref as UserRef),
         from: from,
         name: null,
         dependencies: null,
@@ -114,13 +108,13 @@ class UserDocStreamProvider
   }
 
   @override
-  AutoDisposeStreamProviderElement<DocumentSnapshot> createElement() {
-    return _UserDocStreamProviderElement(this);
+  FutureProviderElement<UserModel> createElement() {
+    return _UserProviderElement(this);
   }
 
   @override
   bool operator ==(Object other) {
-    return other is UserDocStreamProvider && other.userId == userId;
+    return other is UserProvider && other.userId == userId;
   }
 
   @override
@@ -134,18 +128,17 @@ class UserDocStreamProvider
 
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
-mixin UserDocStreamRef on AutoDisposeStreamProviderRef<DocumentSnapshot> {
+mixin UserRef on FutureProviderRef<UserModel> {
   /// The parameter `userId` of this provider.
   String get userId;
 }
 
-class _UserDocStreamProviderElement
-    extends AutoDisposeStreamProviderElement<DocumentSnapshot>
-    with UserDocStreamRef {
-  _UserDocStreamProviderElement(super.provider);
+class _UserProviderElement extends FutureProviderElement<UserModel>
+    with UserRef {
+  _UserProviderElement(super.provider);
 
   @override
-  String get userId => (origin as UserDocStreamProvider).userId;
+  String get userId => (origin as UserProvider).userId;
 }
 
 // ignore_for_file: type=lint

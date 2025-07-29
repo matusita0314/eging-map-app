@@ -8,9 +8,7 @@ import '../features/account/account.dart';
 import '../features/tournament/tournament_page.dart';
 import '../features/chat/chat_page.dart';
 import '../features/challenge/challenge_page.dart';
-import '../providers/chat_provider.dart';
 
-// StatefulWidget を ConsumerStatefulWidget に変更
 class AppScaffold extends ConsumerStatefulWidget {
   const AppScaffold({super.key});
 
@@ -27,12 +25,11 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
   void initState() {
     super.initState();
     _pages = <Widget>[
-      const TimelinePage(),
+      const TimelinePage(), // ホーム
       const MapPage(),
       const TournamentPage(),
       const ChallengePage(),
-      const ChatPage(),
-      MyPage(userId: _user.uid),
+      MyPage(userId: _user.uid), // アカウント
     ];
   }
 
@@ -42,61 +39,24 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    // Providerを監視し、未読数を取得
-    final unreadCount = ref.watch(unreadChatCountProvider).value ?? 0;
-
     return Scaffold(
       body: _pages.elementAt(_selectedIndex),
       bottomNavigationBar: BottomNavigationBar(
-        items: <BottomNavigationBarItem>[
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.timeline),
-            label: 'タイムライン',
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home), // ホームアイコンに変更
+            label: 'ホーム',
           ),
-          const BottomNavigationBarItem(icon: Icon(Icons.map), label: 'マップ'),
-          const BottomNavigationBarItem(
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'マップ'),
+          BottomNavigationBarItem(
             icon: Icon(Icons.emoji_events),
             label: '大会',
           ),
-          const BottomNavigationBarItem(
+          BottomNavigationBarItem(
             icon: Icon(Icons.shield),
             label: 'チャレンジ',
           ),
-          // ▼▼▼ チャットアイコンをStackで囲んでバッジを表示 ▼▼▼
           BottomNavigationBarItem(
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.chat),
-                if (unreadCount > 0)
-                  Positioned(
-                    top: -4,
-                    right: -8,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 18,
-                        minHeight: 18,
-                      ),
-                      child: Text(
-                        '$unreadCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            label: 'チャット',
-          ),
-          const BottomNavigationBarItem(
             icon: Icon(Icons.person),
             label: 'アカウント',
           ),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../models/post_model.dart';
 import '../../widgets/post_grid_card.dart';
@@ -14,6 +15,7 @@ import 'follower_list_page.dart';
 import 'saved_posts_page.dart';
 import '../chat/talk_page.dart';
 import 'settings_page.dart';
+import '../../providers/post_provider.dart';
 import '../../providers/following_provider.dart';
 import '../../providers/followers_provider.dart';
 part 'account.g.dart';
@@ -21,19 +23,6 @@ part 'account.g.dart';
 @riverpod
 Stream<DocumentSnapshot> userDocStream(UserDocStreamRef ref, String userId) {
   return FirebaseFirestore.instance.collection('users').doc(userId).snapshots();
-}
-
-@riverpod
-Stream<List<Post>> userPosts(UserPostsRef ref, String userId) {
-  return FirebaseFirestore.instance
-      .collection('posts')
-      .where('userId', isEqualTo: userId)
-      .orderBy('createdAt', descending: true)
-      .snapshots()
-      .map(
-        (snapshot) =>
-            snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList(),
-      );
 }
 
 class MyPage extends ConsumerWidget {
@@ -133,7 +122,7 @@ class MyPage extends ConsumerWidget {
               CircleAvatar(
                 radius: 40,
                 backgroundImage: photoUrl.isNotEmpty
-                    ? NetworkImage(photoUrl)
+                    ? CachedNetworkImageProvider(photoUrl)
                     : null,
                 child: photoUrl.isEmpty
                     ? const Icon(Icons.person, size: 40)

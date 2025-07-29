@@ -7,7 +7,7 @@ class Post {
   final String id;
   final String userId;
   final String userName;
-  final String userPhotoUrl;
+  final String? userPhotoUrl;
   final String imageUrl;
   final String thumbnailUrl;
   final DateTime createdAt;
@@ -31,7 +31,7 @@ class Post {
     required this.id,
     required this.userId,
     required this.userName,
-    required this.userPhotoUrl,
+    this.userPhotoUrl,
     required this.imageUrl,
     required this.thumbnailUrl,
     required this.createdAt,
@@ -61,7 +61,7 @@ class Post {
       id: doc.id,
       userId: data['userId'] ?? '',
       userName: data['userName'] ?? '名無しさん',
-      userPhotoUrl: data['userPhotoUrl'] ?? '',
+      userPhotoUrl: data['userPhotoUrl'],
       imageUrl: data['imageUrl'] ?? '',
       thumbnailUrl: data['thumbnailUrl'] ?? '',
       createdAt: timestamp.toDate(),
@@ -94,7 +94,7 @@ class Post {
       id: data['objectID'] ?? '',
       userId: data['userId'] ?? '',
       userName: data['userName'] ?? '名無しさん',
-      userPhotoUrl: data['userPhotoUrl'] ?? '',
+      userPhotoUrl: data['userPhotoUrl'],
       imageUrl: data['imageUrl'] ?? '',
       thumbnailUrl: data['thumbnailUrl'] ?? '',
       createdAt: DateTime.fromMillisecondsSinceEpoch(data['createdAt'] ?? 0),

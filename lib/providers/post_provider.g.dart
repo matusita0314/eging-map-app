@@ -143,5 +143,121 @@ class _PostStreamProviderElement extends AutoDisposeStreamProviderElement<Post>
   String get postId => (origin as PostStreamProvider).postId;
 }
 
+String _$userPostsHash() => r'6d8b617c764e3e4aa533f857c70dfe0ea245fb1f';
+
+/// See also [userPosts].
+@ProviderFor(userPosts)
+const userPostsProvider = UserPostsFamily();
+
+/// See also [userPosts].
+class UserPostsFamily extends Family<AsyncValue<List<Post>>> {
+  /// See also [userPosts].
+  const UserPostsFamily();
+
+  /// See also [userPosts].
+  UserPostsProvider call(String userId) {
+    return UserPostsProvider(userId);
+  }
+
+  @override
+  UserPostsProvider getProviderOverride(covariant UserPostsProvider provider) {
+    return call(provider.userId);
+  }
+
+  static const Iterable<ProviderOrFamily>? _dependencies = null;
+
+  @override
+  Iterable<ProviderOrFamily>? get dependencies => _dependencies;
+
+  static const Iterable<ProviderOrFamily>? _allTransitiveDependencies = null;
+
+  @override
+  Iterable<ProviderOrFamily>? get allTransitiveDependencies =>
+      _allTransitiveDependencies;
+
+  @override
+  String? get name => r'userPostsProvider';
+}
+
+/// See also [userPosts].
+class UserPostsProvider extends StreamProvider<List<Post>> {
+  /// See also [userPosts].
+  UserPostsProvider(String userId)
+    : this._internal(
+        (ref) => userPosts(ref as UserPostsRef, userId),
+        from: userPostsProvider,
+        name: r'userPostsProvider',
+        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+            ? null
+            : _$userPostsHash,
+        dependencies: UserPostsFamily._dependencies,
+        allTransitiveDependencies: UserPostsFamily._allTransitiveDependencies,
+        userId: userId,
+      );
+
+  UserPostsProvider._internal(
+    super._createNotifier, {
+    required super.name,
+    required super.dependencies,
+    required super.allTransitiveDependencies,
+    required super.debugGetCreateSourceHash,
+    required super.from,
+    required this.userId,
+  }) : super.internal();
+
+  final String userId;
+
+  @override
+  Override overrideWith(
+    Stream<List<Post>> Function(UserPostsRef provider) create,
+  ) {
+    return ProviderOverride(
+      origin: this,
+      override: UserPostsProvider._internal(
+        (ref) => create(ref as UserPostsRef),
+        from: from,
+        name: null,
+        dependencies: null,
+        allTransitiveDependencies: null,
+        debugGetCreateSourceHash: null,
+        userId: userId,
+      ),
+    );
+  }
+
+  @override
+  StreamProviderElement<List<Post>> createElement() {
+    return _UserPostsProviderElement(this);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is UserPostsProvider && other.userId == userId;
+  }
+
+  @override
+  int get hashCode {
+    var hash = _SystemHash.combine(0, runtimeType.hashCode);
+    hash = _SystemHash.combine(hash, userId.hashCode);
+
+    return _SystemHash.finish(hash);
+  }
+}
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+mixin UserPostsRef on StreamProviderRef<List<Post>> {
+  /// The parameter `userId` of this provider.
+  String get userId;
+}
+
+class _UserPostsProviderElement extends StreamProviderElement<List<Post>>
+    with UserPostsRef {
+  _UserPostsProviderElement(super.provider);
+
+  @override
+  String get userId => (origin as UserPostsProvider).userId;
+}
+
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

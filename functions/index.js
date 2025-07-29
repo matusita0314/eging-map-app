@@ -350,13 +350,25 @@ exports.generateThumbnail = onObjectFinalized({
   region: "asia-northeast1",
   memory: "1GiB",
 }, async (event) => {
+  // 1. 関数開始のログ
+  console.log(`--- generateThumbnail START --- File: ${event.data.name}`);
+
   const fileBucket = event.data.bucket;
   const filePath = event.data.name;
   const contentType = event.data.contentType;
 
-  if (!contentType.startsWith("image/")) { return console.log("This is not an image."); }
-  if (!filePath.startsWith("posts/")) { return console.log("This is not a post image."); }
-  if (path.basename(filePath).startsWith("thumb_")) { return console.log("This is already a thumbnail."); }
+  if (!contentType.startsWith("image/")) {
+    return console.log("This is not an image. Exiting.");
+  }
+  if (!filePath.startsWith("posts/")) {
+    return console.log("This is not a post image. Exiting.");
+  }
+  if (path.basename(filePath).startsWith("thumb_")) {
+    return console.log("This is already a thumbnail. Exiting.");
+  }
+
+  // 2. バリデーション通過のログ
+  console.log("Validation passed. Proceeding with thumbnail generation.");
 
   const bucket = storage.bucket(fileBucket);
   const fileName = path.basename(filePath);
@@ -364,32 +376,54 @@ exports.generateThumbnail = onObjectFinalized({
   const thumbFileName = `thumb_${fileName}`;
   const thumbTempFilePath = path.join(os.tmpdir(), thumbFileName);
 
-  await bucket.file(filePath).download({ destination: tempFilePath });
-  await sharp(tempFilePath).resize(400, 400, { fit: "inside" }).toFile(thumbTempFilePath);
+  try {
+    await bucket.file(filePath).download({ destination: tempFilePath });
+    // 3. 画像ダウンロード成功のログ
+    console.log("Step 1/5: Image downloaded successfully from Storage.");
 
-  const thumbStoragePath = `thumbnails/${thumbFileName}`;
-  await bucket.upload(thumbTempFilePath, {
-    destination: thumbStoragePath,
-    metadata: { contentType: "image/jpeg" },
-  });
+    await sharp(tempFilePath).resize(400, 400, { fit: "inside" }).toFile(thumbTempFilePath);
+    // 4. サムネイル生成成功のログ
+    console.log("Step 2/5: Thumbnail created successfully using sharp.");
 
-  fs.unlinkSync(tempFilePath);
-  fs.unlinkSync(thumbTempFilePath);
+    const thumbStoragePath = `thumbnails/${thumbFileName}`;
+    await bucket.upload(thumbTempFilePath, {
+      destination: thumbStoragePath,
+      metadata: { contentType: "image/jpeg" },
+    });
+    // 5. サムネイルアップロード成功のログ
+    console.log("Step 3/5: Thumbnail uploaded successfully to Storage.");
 
-  const originalFile = bucket.file(filePath);
-  const thumbFile = bucket.file(thumbStoragePath);
-  const config = { action: "read", expires: "03-09-2491" };
+    fs.unlinkSync(tempFilePath);
+    fs.unlinkSync(thumbTempFilePath);
 
-  const [originalUrl] = await originalFile.getSignedUrl(config);
-  const [thumbUrl] = await thumbFile.getSignedUrl(config);
+    const originalFile = bucket.file(filePath);
+    const thumbFile = bucket.file(thumbStoragePath);
 
-  const postId = path.parse(fileName).name;
+    const expirationDate = new Date();
+    expirationDate.setFullYear(expirationDate.getFullYear() + 100);
+    const config = { action: "read", expires: expirationDate };
 
-  return db.collection("posts").doc(postId).update({
-    imageUrl: originalUrl,
-    thumbnailUrl: thumbUrl,
-  });
+    const [originalUrl] = await originalFile.getSignedUrl(config);
+    const [thumbUrl] = await thumbFile.getSignedUrl(config);
+    // 6. URL生成成功のログ
+    console.log("Step 4/5: Signed URLs generated successfully.");
+
+    const postId = path.parse(fileName).name;
+    await db.collection("posts").doc(postId).update({
+      imageUrl: originalUrl,
+      thumbnailUrl: thumbUrl,
+    });
+    // 7. Firestore更新成功のログ
+    console.log("Step 5/5: Firestore document updated successfully.");
+
+  } catch (error) {
+    // 8. エラー発生時のログ
+    console.error("An error occurred within generateThumbnail:", error);
+  } finally {
+    console.log("--- generateThumbnail END ---");
+  }
 });
+
 
 
 // =================================================================

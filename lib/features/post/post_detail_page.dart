@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'edit_post_page.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PostDetailPage extends StatelessWidget {
   final Post post;
@@ -245,13 +246,13 @@ class _PostDetailCardState extends State<_PostDetailCard> {
                     child: Row(
                       children: [
                         CircleAvatar(
-                          backgroundImage: widget.post.userPhotoUrl.isNotEmpty
-                              ? NetworkImage(widget.post.userPhotoUrl)
-                              : null,
-                          child: widget.post.userPhotoUrl.isEmpty
-                              ? const Icon(Icons.person)
-                              : null,
-                        ),
+  backgroundImage: (widget.post.userPhotoUrl != null && widget.post.userPhotoUrl!.isNotEmpty)
+      ? CachedNetworkImageProvider(widget.post.userPhotoUrl!) // ◀◀◀ CachedNetworkImageProvider を使用
+      : null,
+  child: (widget.post.userPhotoUrl == null || widget.post.userPhotoUrl!.isEmpty)
+      ? const Icon(Icons.person)
+      : null,
+),
                         const SizedBox(width: 8),
                         Text(
                           widget.post.userName,

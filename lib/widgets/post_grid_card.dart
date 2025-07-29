@@ -12,6 +12,7 @@ import '../providers/post_provider.dart';
 import '../models/post_model.dart';
 import '../features/account/account.dart';
 import '../features/post/post_detail_page.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PostGridCard extends ConsumerWidget {
   final Post post;
@@ -61,14 +62,14 @@ class PostGridCard extends ConsumerWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    realTimePost.thumbnailUrl.isNotEmpty
-                        ? realTimePost.thumbnailUrl
-                        : realTimePost.imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.error, color: Colors.grey),
-                  ),
+                  CachedNetworkImage(
+  imageUrl: realTimePost.thumbnailUrl.isNotEmpty
+      ? realTimePost.thumbnailUrl
+      : realTimePost.imageUrl,
+  fit: BoxFit.cover,
+  placeholder: (context, url) => Container(color: Colors.grey.shade200),
+  errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.grey),
+),
                   Positioned(
                     top: 4,
                     right: 4,
@@ -112,12 +113,12 @@ class PostGridCard extends ConsumerWidget {
                           children: [
                             CircleAvatar(
                               radius: 12,
-                              backgroundImage: post.userPhotoUrl.isNotEmpty
-                                  ? NetworkImage(post.userPhotoUrl)
-                                  : null,
-                              child: post.userPhotoUrl.isEmpty
-                                  ? const Icon(Icons.person, size: 12)
-                                  : null,
+                              backgroundImage: (post.userPhotoUrl != null && post.userPhotoUrl!.isNotEmpty)
+          ? NetworkImage(post.userPhotoUrl!)
+          : null,
+      child: (post.userPhotoUrl == null || post.userPhotoUrl!.isEmpty)
+          ? const Icon(Icons.person, size: 12)
+          : null,
                             ),
                             const SizedBox(width: 6),
                             Text(

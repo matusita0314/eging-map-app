@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
+import 'package:cached_network_image/cached_network_image.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -167,7 +168,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                             ? MemoryImage(_imageData!)
                             : (_user.photoURL != null &&
                                           _user.photoURL!.isNotEmpty
-                                      ? NetworkImage(_user.photoURL!)
+                                      ? CachedNetworkImageProvider(_user.photoURL!)
                                       : null)
                                   as ImageProvider?,
                         child:

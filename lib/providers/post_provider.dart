@@ -9,3 +9,16 @@ Stream<Post> postStream(PostStreamRef ref, String postId) {
   final docStream = FirebaseFirestore.instance.collection('posts').doc(postId).snapshots();
   return docStream.map((doc) => Post.fromFirestore(doc));
 }
+
+@Riverpod(keepAlive: true)
+Stream<List<Post>> userPosts(UserPostsRef ref, String userId) {
+  return FirebaseFirestore.instance
+      .collection('posts')
+      .where('userId', isEqualTo: userId)
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map(
+        (snapshot) =>
+            snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList(),
+      );
+}

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'account.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../providers/user_provider.dart';
 
 // 表示するリストの種類（フォロワーかフォロー中か）
 enum FollowListType { followers, following }
@@ -51,29 +54,29 @@ class FollowerListPage extends StatelessWidget {
 }
 
 // ユーザー情報を取得して表示するタイルウィジェット
-class _UserTile extends StatelessWidget {
+class _UserTile extends ConsumerWidget {
   final String userId;
-
   const _UserTile({required this.userId});
 
   @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
-      builder: (context, userSnapshot) {
-        if (!userSnapshot.hasData) {
-          return const ListTile(title: Text('読み込み中...'));
-        }
-        final userData = userSnapshot.data!.data() as Map<String, dynamic>? ?? {};
-        final userName = userData['displayName'] ?? '名無しさん';
-        final userPhotoUrl = userData['photoUrl'] ?? '';
+  Widget build(BuildContext context, WidgetRef ref) {
+    // FutureBuilderの代わりにuserProviderをwatchする
+    final userAsyncValue = ref.watch(userProvider(userId));
 
+    return userAsyncValue.when(
+      loading: () => const ListTile(title: Text('読み込み中...')),
+      error: (err, stack) => const ListTile(title: Text('ユーザー情報の取得に失敗')),
+      data: (user) {
         return ListTile(
           leading: CircleAvatar(
-            backgroundImage: userPhotoUrl.isNotEmpty ? NetworkImage(userPhotoUrl) : null,
-            child: userPhotoUrl.isEmpty ? const Icon(Icons.person) : null,
+            backgroundImage: (user.photoUrl != null && user.photoUrl!.isNotEmpty)
+                ? CachedNetworkImageProvider(user.photoUrl!)
+                : null,
+            child: (user.photoUrl == null || user.photoUrl!.isEmpty)
+                ? const Icon(Icons.person)
+                : null,
           ),
-          title: Text(userName),
+          title: Text(user.displayName),
           onTap: () {
             Navigator.of(context).push(MaterialPageRoute(
               builder: (context) => MyPage(userId: userId),

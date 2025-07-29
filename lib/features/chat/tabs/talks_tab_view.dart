@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../talk_page.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class TalksTabView extends StatelessWidget {
   const TalksTabView({super.key});
@@ -119,7 +120,7 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
 
       return ListTile(
         leading: CircleAvatar(
-          backgroundImage: groupPhotoUrl.isNotEmpty ? NetworkImage(groupPhotoUrl) : null,
+          backgroundImage: groupPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(groupPhotoUrl) : null,
           child: groupPhotoUrl.isEmpty ? const Icon(Icons.group) : null,
         ),
         title: Text(groupName, style: const TextStyle(fontWeight: FontWeight.bold)),

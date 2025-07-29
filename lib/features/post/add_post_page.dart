@@ -1,4 +1,3 @@
-// import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -19,7 +18,6 @@ class AddPostPage extends StatefulWidget {
 
 class _AddPostPageState extends State<AddPostPage> {
   final _formKey = GlobalKey<FormState>();
-  // File? _image;
   Uint8List? _imageBytes;
   bool _isUploading = false;
   String? _selectedWeather;
@@ -27,8 +25,6 @@ class _AddPostPageState extends State<AddPostPage> {
   double _airTemperature = 15.0;
   double _waterTemperature = 15.0;
 
-  // 各フォームフィールドのコントローラー
-  // final _weatherController = TextEditingController();
   final _egiNameController = TextEditingController();
   final _squidSizeController = TextEditingController();
   final _weightController = TextEditingController();
@@ -71,8 +67,6 @@ class _AddPostPageState extends State<AddPostPage> {
 
     try {
       final user = FirebaseAuth.instance.currentUser!;
-
-      // ▼▼▼ 1. Firestoreの投稿ドキュメントを先に作成し、IDを取得する ▼▼▼
       final postsRef = FirebaseFirestore.instance.collection('posts');
       final newPostDoc = postsRef.doc();
       final postId = newPostDoc.id;
@@ -86,7 +80,6 @@ class _AddPostPageState extends State<AddPostPage> {
         region = placemarks[0].administrativeArea ?? "不明";
       }
 
-      // 投稿時刻から時間帯を判定
       final hour = DateTime.now().hour;
       String timeOfDay;
       if (hour >= 5 && hour < 11) {
@@ -97,7 +90,6 @@ class _AddPostPageState extends State<AddPostPage> {
         timeOfDay = "夜";
       }
 
-      // ▼▼▼ 2. 取得した投稿IDをファイル名にして、画像をアップロードする ▼▼▼
       final imageFileName = '$postId.jpg'; // ファイル名を投稿IDに
       final ref = FirebaseStorage.instance.ref().child(
         'posts/${user.uid}/$imageFileName',
@@ -105,12 +97,10 @@ class _AddPostPageState extends State<AddPostPage> {
       final metadata = SettableMetadata(contentType: "image/jpeg");
       await ref.putData(_imageBytes!, metadata);
 
-      // ▼▼▼ 3. テキスト情報だけで、Firestoreにドキュメントを書き込む ▼▼▼
-      //     imageUrlとthumbnailUrlは空の状態で作成される
       await newPostDoc.set({
         'userId': user.uid,
         'userName': user.displayName ?? '名無しさん',
-        'userPhotoUrl': user.photoURL ?? '',
+        'userPhotoUrl': user.photoURL,
         'createdAt': Timestamp.now(),
         'location': GeoPoint(
           widget.location.latitude,

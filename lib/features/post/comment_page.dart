@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/post_model.dart';
 import '../../models/comment_model.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class CommentPage extends StatefulWidget {
   final Post post;
@@ -142,7 +143,7 @@ class _CommentTile extends StatelessWidget {
     return ListTile(
       leading: CircleAvatar(
         backgroundImage: comment.userPhotoUrl.isNotEmpty
-            ? NetworkImage(comment.userPhotoUrl)
+            ? CachedNetworkImageProvider(comment.userPhotoUrl)
             : null,
         child: comment.userPhotoUrl.isEmpty ? const Icon(Icons.person) : null,
       ),

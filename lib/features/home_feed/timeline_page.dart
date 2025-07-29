@@ -7,14 +7,17 @@ import '../../providers/discover_filter_provider.dart';
 
 import '../../models/post_model.dart';
 import '../../widgets/post_grid_card.dart';
-import '../../widgets/common_app_bar.dart';
 import '../../providers/following_provider.dart';
 import 'widgets/filter_sheet.dart';
+import '../../providers/chat_provider.dart';
+import '../../providers/unread_notifications_provider.dart';
+import '../chat/chat_page.dart';
+import '../notifications/notification_page.dart';
+
 
 part 'timeline_page.g.dart';
 
-// 「フォロー中」タブ用のProvider
-@riverpod
+@Riverpod(keepAlive: true)
 Stream<List<Post>> followingTimeline(FollowingTimelineRef ref) {
   final followingUsersState = ref.watch(followingNotifierProvider);
   if (followingUsersState.value == null || followingUsersState.value!.isEmpty) {
@@ -33,8 +36,7 @@ Stream<List<Post>> followingTimeline(FollowingTimelineRef ref) {
       );
 }
 
-// 「Today」タブ用のProvider
-@riverpod
+@Riverpod(keepAlive: true)
 Stream<List<Post>> todayTimeline(TodayTimelineRef ref) {
   final now = DateTime.now();
   final startOfToday = DateTime(now.year, now.month, now.day);
@@ -50,176 +52,86 @@ Stream<List<Post>> todayTimeline(TodayTimelineRef ref) {
       );
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 Future<List<Post>> discoverTimeline(DiscoverTimelineRef ref) async {
   final filter = ref.watch(discoverFilterNotifierProvider);
-
-  // OR検索が必要なフィルター値を抜き出す (何もなければ {null} を入れて1回だけループさせる)
-  final squidTypesToSearch = filter.squidTypes.isEmpty
-      ? {null}
-      : filter.squidTypes;
-  final sizeRangesToSearch = filter.sizeRanges.isEmpty
-      ? {null}
-      : filter.sizeRanges;
-  final weatherToSearch = filter.weather.isEmpty
-      ? {null}
-      : filter.weather; // ◀◀◀ 追加
-  final timeOfDayToSearch = filter.timeOfDay.isEmpty
-      ? {null}
-      : filter.timeOfDay; // ◀◀◀ 追加
-
-  // OR検索条件の全組み合わせを作成
-  final searchCombinations =
-      <
-        ({
-          String? squidType,
-          String? sizeRange,
-          String? weather, // ◀◀◀ 追加
-          String? timeOfDay, // ◀◀◀ 追加
-        })
-      >[];
-
-  // ▼▼▼ 4重ループに拡張 ▼▼▼
+  final squidTypesToSearch = filter.squidTypes.isEmpty ? {null} : filter.squidTypes;
+  final sizeRangesToSearch = filter.sizeRanges.isEmpty ? {null} : filter.sizeRanges;
+  final weatherToSearch = filter.weather.isEmpty ? {null} : filter.weather;
+  final timeOfDayToSearch = filter.timeOfDay.isEmpty ? {null} : filter.timeOfDay;
+  final searchCombinations = <({String? squidType, String? sizeRange, String? weather, String? timeOfDay})>[];
   for (final squidType in squidTypesToSearch) {
     for (final sizeRange in sizeRangesToSearch) {
       for (final weather in weatherToSearch) {
         for (final timeOfDay in timeOfDayToSearch) {
-          // 全てがnullの組み合わせは、何もフィルターが選択されていない時以外はスキップ
-          if (squidType == null &&
-              sizeRange == null &&
-              weather == null &&
-              timeOfDay == null &&
-              (squidTypesToSearch.length > 1 ||
-                  sizeRangesToSearch.length > 1 ||
-                  weatherToSearch.length > 1 ||
-                  timeOfDayToSearch.length > 1)) {
+          if (squidType == null && sizeRange == null && weather == null && timeOfDay == null && (squidTypesToSearch.length > 1 || sizeRangesToSearch.length > 1 || weatherToSearch.length > 1 || timeOfDayToSearch.length > 1)) {
             continue;
           }
-          searchCombinations.add((
-            squidType: squidType,
-            sizeRange: sizeRange,
-            weather: weather,
-            timeOfDay: timeOfDay,
-          ));
+          searchCombinations.add((squidType: squidType, sizeRange: sizeRange, weather: weather, timeOfDay: timeOfDay));
         }
       }
     }
   }
-  
   final searchFutures = searchCombinations.map((combo) {
-    final searcher = HitsSearcher(
-      applicationID: 'H43CZ7GND1',
-      apiKey: '7d86d0716d7f8d84984e54f95f7b4dfa',
-      indexName: 'posts_${filter.sortBy.value}',
-    );
-
-    // ▼▼▼ loopFilterState の作成部分を修正 ▼▼▼
-    final loopFilterState = filter.copyWith(
-      squidTypes: combo.squidType == null ? {} : {combo.squidType!},
-      sizeRanges: combo.sizeRange == null ? {} : {combo.sizeRange!},
-      weather: combo.weather == null ? {} : {combo.weather!},
-      timeOfDay: combo.timeOfDay == null ? {} : {combo.timeOfDay!},
-    );
-    // ▲▲▲ ここまで修正 ▲▲▲
-
+    final searcher = HitsSearcher(applicationID: 'H43CZ7GND1', apiKey: '7d86d0716d7f8d84984e54f95f7b4dfa', indexName: 'posts_${filter.sortBy.value}');
+    final loopFilterState = filter.copyWith(squidTypes: combo.squidType == null ? {} : {combo.squidType!}, sizeRanges: combo.sizeRange == null ? {} : {combo.sizeRange!}, weather: combo.weather == null ? {} : {combo.weather!}, timeOfDay: combo.timeOfDay == null ? {} : {combo.timeOfDay!});
     _applyFiltersToSearcher(searcher, loopFilterState);
     searcher.query('');
-
     final futureResponse = searcher.responses.first;
     futureResponse.whenComplete(() => searcher.dispose());
     return futureResponse;
   }).toList();
-
-  // すべての検索が完了するのを待つ
   final responses = await Future.wait(searchFutures);
-
-  // 全ての検索結果(hits)を一つのリストにまとめ、重複を削除する
-  final allPosts = {
-    for (var response in responses)
-      for (var hit in response.hits)
-        hit['objectID'] as String: Post.fromAlgolia(hit),
-  }.values.toList();
-
-  // 最終的な結果を並び替える
+  final allPosts = { for (var response in responses) for (var hit in response.hits) hit['objectID'] as String: Post.fromAlgolia(hit) }.values.toList();
   allPosts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
   return allPosts;
 }
 
-void _applyFiltersToSearcher(
-  HitsSearcher searcher,
-  DiscoverFilterState filter,
-) {
-  // facetFiltersは単純なAND条件として構築
+void _applyFiltersToSearcher(HitsSearcher searcher, DiscoverFilterState filter) {
   final facetFilters = <String>[];
-  if (filter.squidTypes.isNotEmpty) {
-    facetFilters.addAll(filter.squidTypes.map((type) => 'squidType:$type'));
-  }
-  if (filter.weather.isNotEmpty) {
-    facetFilters.addAll(filter.weather.map((w) => 'weather:$w'));
-  }
-  if (filter.timeOfDay.isNotEmpty) {
-    facetFilters.addAll(filter.timeOfDay.map((t) => 'timeOfDay:$t'));
-  }
-  if (filter.prefecture != null) {
-    facetFilters.add('region:${filter.prefecture}');
-  }
-
-  // numericFiltersも単純なAND条件として構築
+  if (filter.squidTypes.isNotEmpty) { facetFilters.addAll(filter.squidTypes.map((type) => 'squidType:$type')); }
+  if (filter.weather.isNotEmpty) { facetFilters.addAll(filter.weather.map((w) => 'weather:$w')); }
+  if (filter.timeOfDay.isNotEmpty) { facetFilters.addAll(filter.timeOfDay.map((t) => 'timeOfDay:$t')); }
+  if (filter.prefecture != null) { facetFilters.add('region:${filter.prefecture}'); }
   final numericFilters = <String>[];
   if (filter.sizeRanges.isNotEmpty) {
-    numericFilters.addAll(
-      filter.sizeRanges
-          .map((r) {
-            switch (r) {
-              case '0-20':
-                return 'squidSize: 0 TO 20';
-              case '20-35':
-                return 'squidSize: 20 TO 35';
-              case '35-50':
-                return 'squidSize: 35 TO 50';
-              case '50以上':
-                return 'squidSize >= 50';
-              default:
-                return '';
-            }
-          })
-          .where((f) => f.isNotEmpty),
-    );
+    numericFilters.addAll(filter.sizeRanges.map((r) {
+      switch (r) {
+        case '0-20': return 'squidSize: 0 TO 20';
+        case '20-35': return 'squidSize: 20 TO 35';
+        case '35-50': return 'squidSize: 35 TO 50';
+        case '50以上': return 'squidSize >= 50';
+        default: return '';
+      }
+    }).where((f) => f.isNotEmpty));
   }
-
   if (filter.periodDays != null) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final past = now - (filter.periodDays! * 24 * 60 * 60 * 1000);
     numericFilters.add('createdAt: $past TO $now');
   }
-
-  // Algoliaに設定を適用 (disjunctiveFacetsはもう使いません)
-  searcher.applyState(
-    (state) => state.copyWith(
-      facetFilters: facetFilters,
-      numericFilters: numericFilters,
-      facets: {'squidType', 'weather', 'region', 'timeOfDay'}.toList(),
-    ),
-  );
+  searcher.applyState((state) => state.copyWith(facetFilters: facetFilters, numericFilters: numericFilters, facets: {'squidType', 'weather', 'region', 'timeOfDay'}.toList()));
 }
 
 @riverpod
 Future<int> discoverHitCount(DiscoverHitCountRef ref) async {
-  // discoverTimelineの結果を再利用する
   final posts = await ref.watch(discoverTimelineProvider.future);
   return posts.length;
 }
 
-// --- UI定義 (変更なし) ---
-class TimelinePage extends StatefulWidget {
+// --- UI定義 ---
+// ▼▼▼【修正】StatefulWidget を ConsumerStatefulWidget に変更 ▼▼▼
+class TimelinePage extends ConsumerStatefulWidget {
   const TimelinePage({super.key});
   @override
-  State<TimelinePage> createState() => _TimelinePageState();
+  ConsumerState<TimelinePage> createState() => _TimelinePageState();
 }
 
-class _TimelinePageState extends State<TimelinePage>
-    with SingleTickerProviderStateMixin {
+class _TimelinePageState extends ConsumerState<TimelinePage> with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  
+  @override
+  bool get wantKeepAlive => true;
+  
   late final TabController _tabController;
   @override
   void initState() {
@@ -246,9 +158,48 @@ class _TimelinePageState extends State<TimelinePage>
 
   @override
   Widget build(BuildContext context) {
+    
+    super.build(context);
+
+    final unreadChatCount = ref.watch(unreadChatCountProvider).value ?? 0;
+    final unreadNotificationCount = ref.watch(unreadNotificationsCountProvider).value ?? 0;
+
     return Scaffold(
-      appBar: CommonAppBar(
+      appBar: AppBar(
+        // 左上の友達検索アイコン
+        leading: IconButton(
+          icon: const Icon(Icons.search),
+          tooltip: '友達を見つける',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const ChatPage(initialIndex: 2)), // 友達を見つけるタブ
+          ),
+        ),
         title: const Text('タイムライン'),
+        // 右上のチャット・通知アイコン
+        actions: [
+          IconButton(
+            icon: Badge(
+              label: Text('$unreadChatCount'),
+              isLabelVisible: unreadChatCount > 0,
+              child: const Icon(Icons.chat_outlined),
+            ),
+            tooltip: 'チャット',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const ChatPage(initialIndex: 1)), // トークタブ
+            ),
+          ),
+          IconButton(
+            icon: Badge(
+              label: Text('$unreadNotificationCount'),
+              isLabelVisible: unreadNotificationCount > 0,
+              child: const Icon(Icons.notifications_outlined),
+            ),
+            tooltip: 'お知らせ',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const NotificationPage()),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -274,6 +225,7 @@ class _TimelinePageState extends State<TimelinePage>
   }
 }
 
+// タイムライン表示用の共通ウィジェット (変更なし)
 class _TimelineView extends ConsumerWidget {
   final ProviderBase<AsyncValue<List<Post>>> provider;
   const _TimelineView({required this.provider});

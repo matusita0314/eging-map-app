@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 // メッセージのデータモデルを修正
 class Message {
@@ -186,7 +187,7 @@ class _MessageBubble extends StatelessWidget {
               if (showAvatarAndName)
                 CircleAvatar(
                   radius: 16,
-                  backgroundImage: message.senderPhotoUrl.isNotEmpty ? NetworkImage(message.senderPhotoUrl) : null,
+                  backgroundImage: message.senderPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(message.senderPhotoUrl) : null,
                   child: message.senderPhotoUrl.isEmpty ? const Icon(Icons.person, size: 16) : null,
                 ),
               if (showAvatarAndName) const SizedBox(width: 8),

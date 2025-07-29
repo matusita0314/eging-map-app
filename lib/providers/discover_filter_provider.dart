@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:equatable/equatable.dart';
 import '../models/sort_by.dart';
 
 part 'discover_filter_provider.g.dart';
 
-class DiscoverFilterState {
+class DiscoverFilterState extends Equatable {
   final SortBy sortBy;
   final String? prefecture;
   final Set<String> sizeRanges;
@@ -12,10 +13,8 @@ class DiscoverFilterState {
   final int? periodDays;
   final Set<String> weather;
   final Set<String> timeOfDay;
-  // final RangeValues? airTempRange; // ← 削除
-  // final RangeValues? waterTempRange; // ← 削除
 
-  DiscoverFilterState({
+  const DiscoverFilterState({
     this.sortBy = SortBy.createdAt,
     this.prefecture,
     this.sizeRanges = const {},
@@ -46,6 +45,16 @@ class DiscoverFilterState {
       timeOfDay: timeOfDay ?? this.timeOfDay,
     );
   }
+  @override
+  List<Object?> get props => [
+        sortBy,
+        prefecture,
+        sizeRanges,
+        squidTypes,
+        periodDays,
+        weather,
+        timeOfDay,
+      ];
 }
 
 @Riverpod(keepAlive: true)

@@ -5,22 +5,26 @@ import 'tabs/talks_tab_view.dart';
 import 'tabs/user_search_tab_view.dart';
 import 'create_group_page.dart';
 
-
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key});
+  final int initialIndex;
+  const ChatPage({super.key, this.initialIndex = 1});
 
   @override
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin {
+class _ChatPageState extends State<ChatPage>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    // ▼▼▼ タブの数を3に変更 ▼▼▼
-    _tabController = TabController(length: 3, vsync: this, initialIndex: 1); // 初期表示をトーク画面にする
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialIndex,
+    );
   }
 
   @override
@@ -39,7 +43,9 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
             icon: const Icon(Icons.group_add_outlined),
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const CreateGroupPage()),
+                MaterialPageRoute(
+                  builder: (context) => const CreateGroupPage(),
+                ),
               );
             },
             tooltip: '新しいグループを作成',
@@ -47,7 +53,6 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
         ],
         bottom: TabBar(
           controller: _tabController,
-          // ▼▼▼ タブの定義を3つに変更 ▼▼▼
           tabs: const [
             Tab(text: 'ともだち'),
             Tab(text: 'トーク'),
@@ -55,14 +60,9 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
           ],
         ),
       ),
-      // ▼▼▼ TabBarViewの中身をインポートしたウィジェットに差し替え ▼▼▼
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          FriendsTabView(),
-          TalksTabView(),
-          UserSearchTabView(),
-        ],
+        children: const [FriendsTabView(), TalksTabView(), UserSearchTabView()],
       ),
     );
   }
