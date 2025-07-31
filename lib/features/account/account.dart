@@ -246,21 +246,11 @@ class MyPage extends ConsumerWidget {
 
   Widget _buildUserPostsGrid(WidgetRef ref, AsyncValue<List<Post>> asyncValue) {
     return asyncValue.when(
-      loading: () => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.0),
-          child: CircularProgressIndicator(),
-        ),
-      ),
+      loading: () => const Center(child: Padding(padding: EdgeInsets.all(24.0), child: CircularProgressIndicator())),
       error: (err, stack) => Center(child: Text('エラー: $err')),
       data: (posts) {
         if (posts.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24.0),
-              child: Text('まだ投稿がありません。'),
-            ),
-          );
+          return const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text('まだ投稿がありません。')));
         }
         return GridView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -274,6 +264,7 @@ class MyPage extends ConsumerWidget {
           ),
           itemCount: posts.length,
           itemBuilder: (context, index) {
+            // ★★★ PostFeedCardではなく、PostGridCardを返す ★★★
             return PostGridCard(post: posts[index]);
           },
         );

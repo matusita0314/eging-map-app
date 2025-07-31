@@ -57,6 +57,7 @@ dependencies:
   algolia_helper_flutter: ^1.2.0
   equatable: ^2.0.5
   cached_network_image: ^3.3.1
+  collection: ^1.19.1
   # google_maps_cluster_manager: ^3.0.0
 dev_dependencies:
   flutter_test:

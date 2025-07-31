@@ -4,10 +4,8 @@ const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const admin = require("firebase-admin");
 const algoliasearch = require("algoliasearch");
 
-// --- ▼▼▼【ここから修正】v2の正しい書き方 ▼▼▼ ---
 const { defineString } = require("firebase-functions/params");
 
-// Firebase Admin初期化（重複初期化を防ぐ）
 if (!admin.apps.length) {
   admin.initializeApp();
 }
@@ -15,14 +13,12 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const storage = admin.storage();
 
-// パラメータとして環境変数を定義
 const algoliaAppId = defineString("ALGOLIA_APP_ID");
 const algoliaAdminKey = defineString("ALGOLIA_ADMIN_KEY");
 
-// Algoliaクライアントを初期化
 const algoliaClient = algoliasearch(algoliaAppId.value(), algoliaAdminKey.value());
 const algoliaIndex = algoliaClient.initIndex("posts");
-// --- ▲▲▲【ここまで修正】▲▲▲ ---
+
 
 const sharp = require("sharp");
 const path = require("path");
@@ -30,6 +26,18 @@ const os = require("os");
 const fs = require("fs");
 const {onRequest} = require("firebase-functions/v2/https");
 const { onCall } = require("firebase-functions/v2/https");
+
+function initializeAlgolia() {
+  if (algoliaAppId.value() && algoliaAdminKey.value()) {
+    const algoliaClient = algoliasearch(algoliaAppId.value(), algoliaAdminKey.value());
+    return {
+      // ▼▼▼【修正点】書き込み先をプライマリインデックス名に変更 ▼▼▼
+      postsIndex: algoliaClient.initIndex("posts"), 
+      usersIndex: algoliaClient.initIndex("users"),
+    };
+  }
+  return {};
+}
 
 // =================================================================
 // ▼▼▼ 汎用的な通知作成関数 (プッシュ通知送信機能付き) ▼▼▼
@@ -51,14 +59,11 @@ async function createNotification(recipientId, notificationData) {
     return console.log(`User ${recipientId} has disabled notifications for type "${notificationData.type}".`);
   }
 
-  // Firestoreに通知ドキュメントを作成
   await userRef.collection("notifications").add({
     ...notificationData,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     isRead: false,
   });
-
-  // --- ▼▼▼ ここからプッシュ通知の処理を修正 ▼▼▼ ---
 
   const fcmTokens = userData.fcmTokens || [];
   if (fcmTokens.length === 0) {
@@ -87,66 +92,30 @@ async function createNotification(recipientId, notificationData) {
       break;
     case "dm":
       title = `${notificationData.fromUserName}さんから新着メッセージ`;
-      body = notificationData.commentText; // メッセージ本文を通知内容にする
+      body = notificationData.commentText;
       break;
   }
 
-  // ★★★ sendMulticast 用のペイロードを作成 ★★★
   const message = {
-    tokens: fcmTokens, // 送信先のトークンリスト
-    notification: {
-      title: title,
-      body: body,
-    },
+    tokens: fcmTokens,
+    notification: { title, body },
     data: {
-      postId: notificationData.postId,
+      postId: notificationData.postId || "",
       type: notificationData.type,
-      fromUserId: notificationData.fromUserId,
+      fromUserId: notificationData.fromUserId || "",
+      chatRoomId: notificationData.chatRoomId || "",
       click_action: "FLUTTER_NOTIFICATION_CLICK",
     },
-    android: { // Android用の詳細設定
-      notification: {
-        sound: "default",
-      },
-    },
-    apns: { // iOS用の詳細設定
-      payload: {
-        aps: {
-          sound: "default",
-        },
-      },
-    },
+    android: { notification: { sound: "default" } },
+    apns: { payload: { aps: { sound: "default" } } },
   };
 
-  // ★★★ sendToDevice の代わりに sendMulticast を使用 ★★★
-  console.log(`Sending push notification to ${fcmTokens.length} tokens individually.`);
-  
-  // 各トークンに対して個別に送信
-  const sendPromises = fcmTokens.map(token => {
-    const individualMessage = {
-      token: token,
-      notification: {
-        title: title,
-        body: body,
-      },
-      data: {
-        postId: notificationData.postId,
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
-      },
-      android: { notification: { sound: "default" } },
-      apns: { payload: { aps: { sound: "default" } } },
-    };
-    return admin.messaging().send(individualMessage);
-  });
-
   try {
-    // すべての送信処理が終わるのを待つ
-    await Promise.all(sendPromises);
-    console.log("All notifications sent successfully.");
+    const response = await admin.messaging().sendEachForMulticast(message);
+    console.log("Successfully sent message:", response);
   } catch (error) {
-    console.error("An error occurred while sending notifications:", error);
+    console.error("Error sending message:", error);
   }
-
 }
 
 
@@ -345,84 +314,53 @@ exports.updatePostsOnProfileChange = onDocumentUpdated({
 // =================================================================
 // ▼▼▼ 5. サムネイル生成の関数 ▼▼▼
 // =================================================================
-exports.generateThumbnail = onObjectFinalized({
-  cpu: 2,
-  region: "asia-northeast1",
-  memory: "1GiB",
-}, async (event) => {
-  // 1. 関数開始のログ
-  console.log(`--- generateThumbnail START --- File: ${event.data.name}`);
-
+exports.generateThumbnail = onObjectFinalized({ cpu: 2, region: "asia-northeast1", memory: "1GiB" }, async (event) => {
   const fileBucket = event.data.bucket;
   const filePath = event.data.name;
   const contentType = event.data.contentType;
 
-  if (!contentType.startsWith("image/")) {
-    return console.log("This is not an image. Exiting.");
-  }
-  if (!filePath.startsWith("posts/")) {
-    return console.log("This is not a post image. Exiting.");
-  }
-  if (path.basename(filePath).startsWith("thumb_")) {
-    return console.log("This is already a thumbnail. Exiting.");
-  }
+  if (!contentType.startsWith("image/")) return console.log("This is not an image.");
+  if (!filePath.startsWith("posts/")) return console.log("This is not a post image.");
 
-  // 2. バリデーション通過のログ
-  console.log("Validation passed. Proceeding with thumbnail generation.");
+  const originalFileName = path.basename(filePath);
+  if (originalFileName.startsWith("thumb_")) return console.log("This is already a thumbnail.");
 
   const bucket = storage.bucket(fileBucket);
-  const fileName = path.basename(filePath);
-  const tempFilePath = path.join(os.tmpdir(), fileName);
-  const thumbFileName = `thumb_${fileName}`;
+  const postId = path.parse(originalFileName).name.split('_')[0];
+  if (!postId) return console.log(`Could not extract postId from filename: ${originalFileName}`);
+
+  const tempFilePath = path.join(os.tmpdir(), originalFileName);
+  const thumbFileName = `thumb_${originalFileName}`;
   const thumbTempFilePath = path.join(os.tmpdir(), thumbFileName);
 
   try {
     await bucket.file(filePath).download({ destination: tempFilePath });
-    // 3. 画像ダウンロード成功のログ
-    console.log("Step 1/5: Image downloaded successfully from Storage.");
-
     await sharp(tempFilePath).resize(400, 400, { fit: "inside" }).toFile(thumbTempFilePath);
-    // 4. サムネイル生成成功のログ
-    console.log("Step 2/5: Thumbnail created successfully using sharp.");
 
-    const thumbStoragePath = `thumbnails/${thumbFileName}`;
+    const thumbStoragePath = path.join(path.dirname(filePath), 'thumbnails', thumbFileName);
     await bucket.upload(thumbTempFilePath, {
       destination: thumbStoragePath,
       metadata: { contentType: "image/jpeg" },
     });
-    // 5. サムネイルアップロード成功のログ
-    console.log("Step 3/5: Thumbnail uploaded successfully to Storage.");
 
     fs.unlinkSync(tempFilePath);
     fs.unlinkSync(thumbTempFilePath);
 
-    const originalFile = bucket.file(filePath);
-    const thumbFile = bucket.file(thumbStoragePath);
+    const expires = '03-09-2491';
+    const originalUrl = await bucket.file(filePath).getSignedUrl({ action: 'read', expires }).then(urls => urls[0]);
+    const thumbUrl = await bucket.file(thumbStoragePath).getSignedUrl({ action: 'read', expires }).then(urls => urls[0]);
 
-    const expirationDate = new Date();
-    expirationDate.setFullYear(expirationDate.getFullYear() + 100);
-    const config = { action: "read", expires: expirationDate };
-
-    const [originalUrl] = await originalFile.getSignedUrl(config);
-    const [thumbUrl] = await thumbFile.getSignedUrl(config);
-    // 6. URL生成成功のログ
-    console.log("Step 4/5: Signed URLs generated successfully.");
-
-    const postId = path.parse(fileName).name;
     await db.collection("posts").doc(postId).update({
-      imageUrl: originalUrl,
-      thumbnailUrl: thumbUrl,
+      imageUrls: admin.firestore.FieldValue.arrayUnion(originalUrl),
+      thumbnailUrls: admin.firestore.FieldValue.arrayUnion(thumbUrl),
     });
-    // 7. Firestore更新成功のログ
-    console.log("Step 5/5: Firestore document updated successfully.");
 
+    console.log(`Successfully generated thumbnail for ${originalFileName} and updated Firestore doc ${postId}.`);
   } catch (error) {
-    // 8. エラー発生時のログ
-    console.error("An error occurred within generateThumbnail:", error);
-  } finally {
-    console.log("--- generateThumbnail END ---");
+    console.error("Error in generateThumbnail:", error);
   }
 });
+
 
 
 
@@ -586,84 +524,95 @@ exports.createNotificationOnFollow = onDocumentCreated({
 // =================================================================
 // ▼▼▼ 12. ユーザー情報をAlgoliaに同期する関数 ▼▼▼
 // =================================================================
-exports.syncUserToAlgolia = onDocumentWritten({
-  document: "users/{userId}",
-  region: "asia-northeast1",
-}, async (event) => {
-  initializeAlgolia();
-  if (!usersIndex) {
-    console.log("Algolia (users) not configured, skipping sync");
-    return null;
-  }
+exports.syncUserToAlgolia = onDocumentWritten("users/{userId}", async (event) => {
+  const { usersIndex } = initializeAlgolia();
+  if (!usersIndex) return console.log("Algolia (users) not configured, skipping sync");
+
   const userId = event.params.userId;
-  const userDoc = event.data.after;
-  if (!userDoc.exists) {
+  if (!event.data.after.exists) {
     await usersIndex.deleteObject(userId);
-    console.log(`Algolia user record deleted for userId: ${userId}`);
-    return null;
+    return console.log(`Algolia user record deleted for userId: ${userId}`);
   }
-  const userData = userDoc.data();
+
+  const userData = event.data.after.data();
   const record = {
     objectID: userId,
     displayName: userData.displayName,
     photoUrl: userData.photoUrl,
-    introduction: userData.introduction,
   };
   await usersIndex.saveObject(record);
   console.log(`Algolia user record saved for userId: ${userId}`);
 });
-
 // =================================================================
-// ▼▼▼ 13. 投稿をAlgoliaに同期する関数（修正済み） ▼▼▼
+// ▼▼▼ 13. 投稿をAlgoliaに同期する関数（デバッグコード入り） ▼▼▼
 // =================================================================
-exports.syncPostToAlgolia = onDocumentWritten({
-  document: "posts/{postId}",
-  region: "asia-northeast1",
-}, async (event) => {
-  initializeAlgolia();
+exports.syncPostToAlgolia = onDocumentWritten("posts/{postId}", async (event) => {
+  const { postsIndex } = initializeAlgolia();
   if (!postsIndex) {
     console.log("Algolia (posts) not configured, skipping sync");
     return null;
   }
+
   const postId = event.params.postId;
-  try {
-    if (!event.data.after.exists) {
+
+  // 削除処理
+  if (!event.data.after.exists) {
+    try {
       await postsIndex.deleteObject(postId);
       console.log(`Algolia record deleted for postId: ${postId}`);
-      return null;
+    } catch (error) {
+      console.error(`Error deleting Algolia record for postId ${postId}:`, error);
     }
-    const postData = event.data.after.data();
-    if (!postData.createdAt || !postData.location) {
-      console.log(`Missing required fields for postId: ${postId}`);
+    return null;
+  }
+
+  // 作成・更新処理
+  const postData = event.data.after.data();
+
+  // ★★★ createdAt と location が存在しない場合はエラーを防ぐ ★★★
+  if (!postData.createdAt || !postData.location) {
+      console.log(`Missing required fields (createdAt or location) for postId: ${postId}. Skipping sync.`);
       return null;
-    }
-    const record = {
-      objectID: postId,
-      userId: postData.userId,
-      userName: postData.userName,
-      imageUrl: postData.imageUrl,
-      thumbnailUrl: postData.thumbnailUrl,
-      createdAt: postData.createdAt.toDate().getTime(),
-      squidSize: postData.squidSize,
-      weight: postData.weight,
-      egiName: postData.egiName,
-      egiMaker: postData.egiMaker,
-      weather: postData.weather,
-      airTemperature: postData.airTemperature,
-      waterTemperature: postData.waterTemperature,
-      likeCount: postData.likeCount || 0,
-      commentCount: postData.commentCount || 0,
-      _geoloc: {
-        lat: postData.location.latitude,
-        lng: postData.location.longitude,
-      },
-      region: postData.region,
-      squidType: postData.squidType,
-      timeOfDay: postData.timeOfDay,
-    };
+  }
+
+  const record = {
+    objectID: postId,
+    userId: postData.userId,
+    userName: postData.userName,
+    userPhotoUrl: postData.userPhotoUrl,
+    imageUrls: postData.imageUrls || [],
+    thumbnailUrls: postData.thumbnailUrls || [],
+    createdAt: postData.createdAt.toDate().getTime(),
+    location: { // _geolocはAlgoliaの予約語なので、locationオブジェクトの中に含める
+      lat: postData.location.latitude,
+      lng: postData.location.longitude,
+    },
+    _geoloc: { // 地理空間検索のためにルートレベルにも配置
+      lat: postData.location.latitude,
+      lng: postData.location.longitude,
+    },
+    weather: postData.weather,
+    airTemperature: postData.airTemperature,
+    waterTemperature: postData.waterTemperature,
+    caption: postData.caption,
+    squidSize: postData.squidSize,
+    weight: postData.weight,
+    egiName: postData.egiName,
+    egiMaker: postData.egiMaker,
+    tackleRod: postData.tackleRod,
+    tackleReel: postData.tackleReel,
+    tackleLine: postData.tackleLine,
+    likeCount: postData.likeCount || 0,
+    commentCount: postData.commentCount || 0,
+    squidType: postData.squidType,
+    region: postData.region,
+    timeOfDay: postData.timeOfDay,
+  };
+
+  try {
     await postsIndex.saveObject(record);
     console.log(`Algolia record saved for postId: ${postId}`);
   } catch (error) {
-    console.error(`Error syncing to Algolia for postId ${postId}:`, error);
+    console.error(`Error saving Algolia record for postId ${postId}:`, error);
   }
 });

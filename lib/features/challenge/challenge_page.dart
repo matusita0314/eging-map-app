@@ -93,8 +93,6 @@ class _MissionList extends StatelessWidget {
         if (snapshot.hasError) {
           return const Center(child: Text('エラーが発生しました'));
         }
-        // ★★★本来の実装★★★
-        // 絞り込まれた結果、データがなければメッセージを表示
         if (!snapshot.hasData || snapshot.data![0].docs.isEmpty) {
           return const Center(child: Text('このランクのミッションはありません。'));
         }

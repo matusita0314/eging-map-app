@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/discover_filter_provider.dart';
 import '../../../models/sort_by.dart';
 import '../timeline_page.dart';
+import '../../../providers/discover_feed_provider.dart';
 
 class FilterSheet extends ConsumerStatefulWidget {
   const FilterSheet({super.key});
@@ -50,7 +51,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   Widget build(BuildContext context) {
     final filterState = ref.watch(discoverFilterNotifierProvider);
     final filterNotifier = ref.read(discoverFilterNotifierProvider.notifier);
-    final hitCountAsync = ref.watch(discoverHitCountProvider);
+    final discoverFeedAsync = ref.watch(discoverFeedNotifierProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -61,8 +62,6 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          _buildSectionTitle('並び替え'),
-          Wrap(spacing: 8.0, children: SortBy.values.map((sort) => ChoiceChip(label: Text(sort.displayName), selected: filterState.sortBy == sort, onSelected: (s) { if(s) filterNotifier.updateSortBy(sort); })).toList()),
           _buildSectionTitle('期間'),
           Wrap(spacing: 8.0, children: [ ChoiceChip(label: const Text('一週間'), selected: filterState.periodDays == 7, onSelected: (s) => filterNotifier.setPeriod(s ? 7 : null)), ChoiceChip(label: const Text('一か月'), selected: filterState.periodDays == 30, onSelected: (s) => filterNotifier.setPeriod(s ? 30 : null)), ChoiceChip(label: const Text('一年'), selected: filterState.periodDays == 365, onSelected: (s) => filterNotifier.setPeriod(s ? 365 : null)), ChoiceChip(label: const Text('すべて'), selected: filterState.periodDays == null, onSelected: (s) { if (s) filterNotifier.setPeriod(null); }) ]),
           _buildSectionTitle('地域'),
@@ -77,10 +76,23 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
           Wrap(spacing: 8.0, children: weatherOptions.map((weather) => FilterChip(label: Text(weather), selected: filterState.weather.contains(weather), onSelected: (_) => filterNotifier.toggleWeather(weather))).toList()),
           _buildSectionTitle('時間帯'),
           Wrap(spacing: 8.0, children: timeOfDayOptions.map((time) => FilterChip(label: Text(time), selected: filterState.timeOfDay.contains(time), onSelected: (_) => filterNotifier.toggleTimeOfDay(time))).toList()),
-          // --- 気温・水温のUIは削除 ---
         ],
       ),
-      bottomNavigationBar: Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), child: ElevatedButton(style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: () => Navigator.of(context).pop(), child: hitCountAsync.when(data: (c) => Text('$c件 ヒット!!'), loading: () => const CircularProgressIndicator(), error: (e,s) => const Text('エラー')))),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+          child: discoverFeedAsync.when(
+            data: (feedState) => Text('${feedState.hitCount}件 ヒット!!'),
+            loading: () => const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white)),
+            error: (e,s) => const Text('エラー'),
+          ),
+        ),
+      ),
     );
   }
   Widget _buildSectionTitle(String title) => Padding(padding: const EdgeInsets.only(top: 24.0, bottom: 8.0), child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)));

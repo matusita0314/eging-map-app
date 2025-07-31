@@ -9,6 +9,9 @@ class PostDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (post.imageUrls.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return GestureDetector(
       onTap: () {},
       behavior: HitTestBehavior.opaque,
@@ -44,7 +47,7 @@ class PostDetailSheet extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12.0),
                   child: Image.network(
-                    post.imageUrl,
+                    post.imageUrls.first,
                     height: MediaQuery.of(context).size.width * 0.6,
                     width: double.infinity,
                     fit: BoxFit.cover,

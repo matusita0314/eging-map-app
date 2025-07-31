@@ -9,6 +9,9 @@ class PostPreviewSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (post.imageUrls.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return GestureDetector(
       onTap: () {
         // シート全体をタップしても詳細ページに飛ぶようにする
@@ -36,7 +39,7 @@ class PostPreviewSheet extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(12.0),
               child: Image.network(
-                post.imageUrl,
+                post.imageUrls.first,
                 height: 180,
                 width: double.infinity,
                 fit: BoxFit.cover,

@@ -8,8 +8,8 @@ class Post {
   final String userId;
   final String userName;
   final String? userPhotoUrl;
-  final String imageUrl;
-  final String thumbnailUrl;
+  final List<String> imageUrls;
+  final List<String> thumbnailUrls;
   final DateTime createdAt;
   final LatLng location;
   final String weather;
@@ -26,14 +26,16 @@ class Post {
   final int likeCount;
   final int commentCount;
   final String? squidType;
+  final String? region;
+  final String? timeOfDay;
 
   Post({
     required this.id,
     required this.userId,
     required this.userName,
     this.userPhotoUrl,
-    required this.imageUrl,
-    required this.thumbnailUrl,
+    required this.imageUrls,
+    required this.thumbnailUrls,
     required this.createdAt,
     required this.location,
     required this.weather,
@@ -50,6 +52,9 @@ class Post {
     required this.likeCount,
     required this.commentCount,
     this.squidType,
+    this.region, 
+    this.timeOfDay,
+
   });
 
   factory Post.fromFirestore(DocumentSnapshot doc) {
@@ -57,13 +62,16 @@ class Post {
     GeoPoint point = data['location'] ?? const GeoPoint(0, 0);
     Timestamp timestamp = data['createdAt'] ?? Timestamp.now();
 
+    final imageUrlsData = data['imageUrls'] ?? [];
+    final thumbnailUrlsData = data['thumbnailUrls'] ?? [];
+
     return Post(
       id: doc.id,
       userId: data['userId'] ?? '',
       userName: data['userName'] ?? '名無しさん',
       userPhotoUrl: data['userPhotoUrl'],
-      imageUrl: data['imageUrl'] ?? '',
-      thumbnailUrl: data['thumbnailUrl'] ?? '',
+      imageUrls: List<String>.from(imageUrlsData),
+      thumbnailUrls: List<String>.from(thumbnailUrlsData),
       createdAt: timestamp.toDate(),
       location: LatLng(point.latitude, point.longitude),
       weather: data['weather'] ?? '',
@@ -80,23 +88,27 @@ class Post {
       likeCount: data['likeCount'] ?? 0,
       commentCount: data['commentCount'] ?? 0,
       squidType: data['squidType'],
+      region: data['region'],
+      timeOfDay: data['timeOfDay'], 
     );
   }
 
   factory Post.fromAlgolia(Map<String, dynamic> data) {
-    // Algoliaの_geolocからLatLngを復元
+  
     final geo = data['_geoloc'] as Map<String, dynamic>?;
     final location = (geo != null)
         ? LatLng(geo['lat'], geo['lng'])
         : const LatLng(0, 0);
+    final imageUrlsData = data['imageUrls'] ?? [];
+    final thumbnailUrlsData = data['thumbnailUrls'] ?? [];
 
     return Post(
       id: data['objectID'] ?? '',
       userId: data['userId'] ?? '',
       userName: data['userName'] ?? '名無しさん',
       userPhotoUrl: data['userPhotoUrl'],
-      imageUrl: data['imageUrl'] ?? '',
-      thumbnailUrl: data['thumbnailUrl'] ?? '',
+      imageUrls: List<String>.from(imageUrlsData),
+      thumbnailUrls: List<String>.from(thumbnailUrlsData),
       createdAt: DateTime.fromMillisecondsSinceEpoch(data['createdAt'] ?? 0),
       location: location,
       weather: data['weather'] ?? '',
@@ -113,6 +125,8 @@ class Post {
       likeCount: data['likeCount'] ?? 0,
       commentCount: data['commentCount'] ?? 0,
       squidType: data['squidType'],
+      region: data['region'],
+      timeOfDay: data['timeOfDay'], 
     );
   }
 }

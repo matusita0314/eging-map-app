@@ -1,4 +1,3 @@
-// lib/models/sort_by.dart
 enum SortBy {
   createdAt('createdAt_desc', '新着順'),
   squidSize('squidSize_desc', 'サイズ順'),

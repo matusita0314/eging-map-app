@@ -44,12 +44,14 @@ class PostGridCard extends ConsumerWidget {
     final isFollowing =
         ref.watch(followingNotifierProvider).value?.contains(post.userId) ??
         false;
+    final thumbnailUrl = realTimePost.thumbnailUrls.isNotEmpty
+        ? realTimePost.thumbnailUrls.first
+        : (realTimePost.imageUrls.isNotEmpty ? realTimePost.imageUrls.first : '');
+
 
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => PostDetailPage(post: realTimePost),
-        ),
+        MaterialPageRoute(builder: (context) => PostDetailPage(post: realTimePost)),
       ),
       child: Card(
         clipBehavior: Clip.antiAlias,
@@ -62,14 +64,15 @@ class PostGridCard extends ConsumerWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  CachedNetworkImage(
-  imageUrl: realTimePost.thumbnailUrl.isNotEmpty
-      ? realTimePost.thumbnailUrl
-      : realTimePost.imageUrl,
-  fit: BoxFit.cover,
-  placeholder: (context, url) => Container(color: Colors.grey.shade200),
-  errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.grey),
-),
+                  if (thumbnailUrl.isNotEmpty)
+                    CachedNetworkImage(
+                      imageUrl: thumbnailUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(color: Colors.grey.shade200),
+                      errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.grey),
+                    )
+                  else
+                    Container(color: Colors.grey.shade200, child: const Icon(Icons.image_not_supported)),
                   Positioned(
                     top: 4,
                     right: 4,

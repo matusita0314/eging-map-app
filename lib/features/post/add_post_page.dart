@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:typed_data';
 import 'package:geocoding/geocoding.dart';
-
 class AddPostPage extends StatefulWidget {
   final LatLng location;
 
@@ -18,7 +17,7 @@ class AddPostPage extends StatefulWidget {
 
 class _AddPostPageState extends State<AddPostPage> {
   final _formKey = GlobalKey<FormState>();
-  Uint8List? _imageBytes;
+  final List<Uint8List> _imageBytesList = [];
   bool _isUploading = false;
   String? _selectedWeather;
   String? _selectedSquidType;
@@ -34,43 +33,48 @@ class _AddPostPageState extends State<AddPostPage> {
   final _egiMakerController = TextEditingController();
   final _captionController = TextEditingController();
 
-  Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-    );
-    if (pickedFile != null) {
-      final bytes = await pickedFile.readAsBytes();
-      setState(() {
-        _imageBytes = bytes;
-      });
+  @override
+  void dispose() {
+    _egiNameController.dispose();
+    _squidSizeController.dispose();
+    _weightController.dispose();
+    _tackleRodController.dispose();
+    _tackleReelController.dispose();
+    _tackleLineController.dispose();
+    _egiMakerController.dispose();
+    _captionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImages() async {
+    if (_imageBytesList.length >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('画像は3枚までです。')));
+      return;
+    }
+    final pickedFiles = await ImagePicker().pickMultipleMedia();
+    if (pickedFiles.isNotEmpty) {
+      for (final file in pickedFiles) {
+        if (_imageBytesList.length < 3) {
+          _imageBytesList.add(await file.readAsBytes());
+        }
+      }
+      setState(() {});
     }
   }
 
   Future<void> _submitPost() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedWeather == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('天気を選択してください。')));
-      return;
-    }
-    if (_imageBytes == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('写真を選択してください。')));
+    if (_imageBytesList.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('写真を1枚以上選択してください。')));
       return;
     }
 
-    setState(() {
-      _isUploading = true;
-    });
+    setState(() => _isUploading = true);
 
     try {
       final user = FirebaseAuth.instance.currentUser!;
-      final postsRef = FirebaseFirestore.instance.collection('posts');
-      final newPostDoc = postsRef.doc();
-      final postId = newPostDoc.id;
-
+      final newPostDoc = FirebaseFirestore.instance.collection('posts').doc();
+      
       List<Placemark> placemarks = await placemarkFromCoordinates(
         widget.location.latitude,
         widget.location.longitude,
@@ -90,27 +94,16 @@ class _AddPostPageState extends State<AddPostPage> {
         timeOfDay = "夜";
       }
 
-      final imageFileName = '$postId.jpg'; // ファイル名を投稿IDに
-      final ref = FirebaseStorage.instance.ref().child(
-        'posts/${user.uid}/$imageFileName',
-      );
-      final metadata = SettableMetadata(contentType: "image/jpeg");
-      await ref.putData(_imageBytes!, metadata);
-
+      // 1. まずFirestoreにドキュメントを作成 (URLは空のリストで初期化)
       await newPostDoc.set({
         'userId': user.uid,
         'userName': user.displayName ?? '名無しさん',
         'userPhotoUrl': user.photoURL,
         'createdAt': Timestamp.now(),
-        'location': GeoPoint(
-          widget.location.latitude,
-          widget.location.longitude,
-        ),
+        'location': GeoPoint(widget.location.latitude, widget.location.longitude),
         'weather': _selectedWeather,
         'squidSize': double.tryParse(_squidSizeController.text) ?? 0.0,
-        'weight': _weightController.text.isEmpty
-            ? null
-            : double.tryParse(_weightController.text),
+        'weight': _weightController.text.isEmpty ? null : double.tryParse(_weightController.text),
         'egiName': _egiNameController.text,
         'egiMaker': _egiMakerController.text,
         'tackleRod': _tackleRodController.text,
@@ -121,46 +114,36 @@ class _AddPostPageState extends State<AddPostPage> {
         'caption': _captionController.text,
         'likeCount': 0,
         'commentCount': 0,
-        'imageUrl': '', // 最初は空文字
-        'thumbnailUrl': '', // 最初は空文字
-        'region': region, // 地域
-        'squidType': _selectedSquidType, // イカの種類
-        'timeOfDay': timeOfDay, // 時間帯
+        'imageUrls': [], 
+        'thumbnailUrls': [],
+        'region': region, 
+        'squidType': _selectedSquidType, 
+        'timeOfDay': timeOfDay, 
       });
 
+      // 2. その後、画像をStorageにアップロード
+      // ファイル名に投稿IDとインデックスを含めることで、Cloud Functionsがどの投稿に紐づくか判断できる
+      for (int i = 0; i < _imageBytesList.length; i++) {
+        final imageBytes = _imageBytesList[i];
+        final imageFileName = '${newPostDoc.id}_$i.jpg';
+        final ref = FirebaseStorage.instance.ref('posts/${user.uid}/$imageFileName');
+        await ref.putData(imageBytes);
+      }
+
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('投稿が完了しました！')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('投稿が完了しました！')));
         Navigator.of(context).pop();
       }
     } catch (e) {
       print('投稿エラー: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('エラーが発生しました: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('エラーが発生しました: $e')));
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
+        setState(() => _isUploading = false);
       }
     }
-  }
-
-  @override
-  void dispose() {
-    // _weatherController.dispose();
-    _egiNameController.dispose();
-    _squidSizeController.dispose();
-    _weightController.dispose();
-    _tackleRodController.dispose();
-    _tackleReelController.dispose();
-    _tackleLineController.dispose();
-    _egiMakerController.dispose();
-    super.dispose();
   }
 
   @override
@@ -174,38 +157,59 @@ class _AddPostPageState extends State<AddPostPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 画像プレビュー＆選択ボタン
-              GestureDetector(
-                onTap: _pickImage,
-                child: Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade400),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.grey.shade200,
-                  ),
-                  child: _imageBytes != null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(_imageBytes!, fit: BoxFit.cover),
-                        )
-                      : const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.camera_alt,
-                                size: 40,
-                                color: Colors.grey,
+              _buildSectionTitle('画像 (3枚まで)'),
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _imageBytesList.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == _imageBytesList.length) {
+                      return _imageBytesList.length < 3
+                          ? GestureDetector(
+                              onTap: _pickImages,
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                margin: const EdgeInsets.only(right: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.add_a_photo, color: Colors.grey),
                               ),
-                              SizedBox(height: 8),
-                              Text(
-                                '写真をタップして選択',
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ],
+                            )
+                          : const SizedBox.shrink();
+                    }
+                    return SizedBox(
+                      width: 100,
+                      height: 100,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.memory(_imageBytesList[index], fit: BoxFit.cover),
+                            ),
                           ),
-                        ),
+                          Positioned(
+                            top: -14,
+                            right: -12,
+                            child: IconButton(
+                              icon: const Icon(Icons.cancel, color: Colors.black54, size: 20),
+                              onPressed: () {
+                                setState(() {
+                                  _imageBytesList.removeAt(index);
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 24),
@@ -223,10 +227,7 @@ class _AddPostPageState extends State<AddPostPage> {
                       children: [
                         Icon(Icons.warning_amber_rounded, color: Colors.amber),
                         SizedBox(width: 8),
-                        Text(
-                          '投稿時の注意事項',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        Text('投稿時の注意事項', style: TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
                     SizedBox(height: 8),
@@ -241,75 +242,46 @@ class _AddPostPageState extends State<AddPostPage> {
                 ),
               ),
               const SizedBox(height: 24),
-              // 各種フォームフィールド
               _buildSectionTitle('基本情報'),
               DropdownButtonFormField<String>(
                 value: _selectedSquidType,
-                decoration: const InputDecoration(
-                  labelText: 'イカの種類 *',
-                  prefixIcon: Icon(Icons.waves),
-                ),
+                decoration: const InputDecoration(labelText: 'イカの種類 *', prefixIcon: Icon(Icons.waves)),
                 hint: const Text('釣れたイカの種類を選択'),
                 items: ['アオリイカ', 'コウイカ', 'ヤリイカ', 'スルメイカ', 'ヒイカ', 'モンゴウイカ']
-                    .map(
-                      (String value) => DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      ),
-                    )
+                    .map((String value) => DropdownMenuItem<String>(value: value, child: Text(value)))
                     .toList(),
-                onChanged: (String? newValue) =>
-                    setState(() => _selectedSquidType = newValue),
+                onChanged: (String? newValue) => setState(() => _selectedSquidType = newValue),
                 validator: (value) => value == null ? '必須項目です' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _egiNameController,
-                decoration: const InputDecoration(
-                  labelText: 'エギ・ルアー名',
-                  prefixIcon: Icon(Icons.label_outline),
-                ),
+                decoration: const InputDecoration(labelText: 'エギ・ルアー名', prefixIcon: Icon(Icons.label_outline)),
                 validator: (value) => value!.isEmpty ? '必須項目です' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _squidSizeController,
-                decoration: const InputDecoration(
-                  labelText: 'サイズ (cm)',
-                  prefixIcon: Icon(Icons.straighten_outlined),
-                ),
+                decoration: const InputDecoration(labelText: 'サイズ (cm)', prefixIcon: Icon(Icons.straighten_outlined)),
                 keyboardType: TextInputType.number,
                 validator: (value) => value!.isEmpty ? '必須項目です' : null,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _selectedWeather,
-                decoration: const InputDecoration(
-                  labelText: '天気',
-                  prefixIcon: Icon(Icons.wb_sunny_outlined),
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: '天気', prefixIcon: Icon(Icons.wb_sunny_outlined), border: OutlineInputBorder()),
                 hint: const Text('天気を選択'),
                 items: ['晴れ', '快晴', '曇り', '雨']
-                    .map(
-                      (String value) => DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      ),
-                    )
+                    .map((String value) => DropdownMenuItem<String>(value: value, child: Text(value)))
                     .toList(),
-                onChanged: (String? newValue) =>
-                    setState(() => _selectedWeather = newValue),
+                onChanged: (String? newValue) => setState(() => _selectedWeather = newValue),
                 validator: (value) => value == null ? '必須項目です' : null,
               ),
               const SizedBox(height: 24),
               _buildSectionTitle('詳細情報（任意）'),
               TextFormField(
                 controller: _weightController,
-                decoration: const InputDecoration(
-                  labelText: '重さ (g)',
-                  prefixIcon: Icon(Icons.scale_outlined),
-                ),
+                decoration: const InputDecoration(labelText: '重さ (g)', prefixIcon: Icon(Icons.scale_outlined)),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 16),
@@ -318,13 +290,7 @@ class _AddPostPageState extends State<AddPostPage> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(left: 12.0),
-                    child: Text(
-                      '気温: ${_airTemperature.toStringAsFixed(1)} ℃',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
-                      ),
-                    ),
+                    child: Text('気温: ${_airTemperature.toStringAsFixed(1)} ℃', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                   ),
                   Slider(
                     value: _airTemperature,
@@ -332,8 +298,7 @@ class _AddPostPageState extends State<AddPostPage> {
                     max: 40,
                     divisions: 100,
                     label: _airTemperature.toStringAsFixed(1),
-                    onChanged: (double value) =>
-                        setState(() => _airTemperature = value),
+                    onChanged: (double value) => setState(() => _airTemperature = value),
                   ),
                 ],
               ),
@@ -343,13 +308,7 @@ class _AddPostPageState extends State<AddPostPage> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(left: 12.0),
-                    child: Text(
-                      '水温: ${_waterTemperature.toStringAsFixed(1)} ℃',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
-                      ),
-                    ),
+                    child: Text('水温: ${_waterTemperature.toStringAsFixed(1)} ℃', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                   ),
                   Slider(
                     value: _waterTemperature,
@@ -357,52 +316,35 @@ class _AddPostPageState extends State<AddPostPage> {
                     max: 35,
                     divisions: 70,
                     label: _waterTemperature.toStringAsFixed(1),
-                    onChanged: (double value) =>
-                        setState(() => _waterTemperature = value),
+                    onChanged: (double value) => setState(() => _waterTemperature = value),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _egiMakerController,
-                decoration: const InputDecoration(
-                  labelText: 'エギ・ルアーメーカー',
-                  prefixIcon: Icon(Icons.business_outlined),
-                ),
+                decoration: const InputDecoration(labelText: 'エギ・ルアーメーカー', prefixIcon: Icon(Icons.business_outlined)),
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _tackleRodController,
-                decoration: const InputDecoration(
-                  labelText: 'ロッド',
-                  prefixIcon: Icon(Icons.sports_esports_outlined), // 仮
-                ),
+                decoration: const InputDecoration(labelText: 'ロッド', prefixIcon: Icon(Icons.sports_esports_outlined)),
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _tackleReelController,
-                decoration: const InputDecoration(
-                  labelText: 'リール',
-                  prefixIcon: Icon(Icons.catching_pokemon_outlined), // 仮
-                ),
+                decoration: const InputDecoration(labelText: 'リール', prefixIcon: Icon(Icons.catching_pokemon_outlined)),
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _tackleLineController,
-                decoration: const InputDecoration(
-                  labelText: 'ライン',
-                  prefixIcon: Icon(Icons.timeline_outlined), // 仮
-                ),
+                decoration: const InputDecoration(labelText: 'ライン', prefixIcon: Icon(Icons.timeline_outlined)),
               ),
               const SizedBox(height: 16),
               TextFormField(
-                // ▼ 追記
                 controller: _captionController,
-                decoration: const InputDecoration(
-                  labelText: '一言コメント（任意）',
-                  prefixIcon: Icon(Icons.comment_outlined),
-                ),
-                maxLength: 100, // 100文字制限
+                decoration: const InputDecoration(labelText: '一言コメント（任意）', prefixIcon: Icon(Icons.comment_outlined)),
+                maxLength: 100,
               ),
             ],
           ),
@@ -412,44 +354,26 @@ class _AddPostPageState extends State<AddPostPage> {
         padding: const EdgeInsets.all(16.0),
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
-            minimumSize: const Size.fromHeight(50), // 高さを50に設定
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12), // 角を少し丸くする
-            ),
-            backgroundColor: Colors.blue, // ボタンの色
-            foregroundColor: Colors.white, // テキストの色
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
           ),
-          // アップロード中はボタンを無効化し、ローディング表示
           onPressed: _isUploading ? null : _submitPost,
           child: _isUploading
-              ? const SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 3,
-                  ),
-                )
-              : const Text(
-                  '投稿する',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+              ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+              : const Text('投稿する', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ),
       ),
     );
   }
 
-  // セクションのタイトル用ウィジェット
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.blueGrey,
-        ),
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
       ),
     );
   }

@@ -1,8 +1,12 @@
+// lib/features/post/edit_post_page.dart (完全版)
+
 import 'dart:typed_data';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/post_model.dart';
 
 class EditPostPage extends StatefulWidget {
@@ -16,14 +20,15 @@ class EditPostPage extends StatefulWidget {
 
 class _EditPostPageState extends State<EditPostPage> {
   final _formKey = GlobalKey<FormState>();
-  Uint8List? _imageBytes;
-  String? _existingImageUrl;
   bool _isUploading = false;
 
+  late List<String> _existingImageUrls;
+  final List<Uint8List> _newImageBytes = [];
+  final List<String> _deletedImageUrls = [];
+  
   String? _selectedWeather;
   double _airTemperature = 15.0;
   double _waterTemperature = 15.0;
-
   late final TextEditingController _egiNameController;
   late final TextEditingController _squidSizeController;
   late final TextEditingController _weightController;
@@ -36,7 +41,8 @@ class _EditPostPageState extends State<EditPostPage> {
   @override
   void initState() {
     super.initState();
-    // 既存の投稿データでフォームの各項目を初期化
+    _existingImageUrls = List<String>.from(widget.post.imageUrls);
+    
     _egiNameController = TextEditingController(text: widget.post.egiName);
     _squidSizeController = TextEditingController(
       text: widget.post.squidSize.toString(),
@@ -50,21 +56,17 @@ class _EditPostPageState extends State<EditPostPage> {
     _tackleReelController = TextEditingController(text: widget.post.tackleReel);
     _tackleLineController = TextEditingController(text: widget.post.tackleLine);
     final weatherOptions = ['晴れ', '快晴', '曇り', '雨'];
-    // DBの天気が選択肢にあればそれを、なければnullを設定
     if (weatherOptions.contains(widget.post.weather)) {
       _selectedWeather = widget.post.weather;
     } else {
       _selectedWeather = null;
     }
-    // _selectedWeather = widget.post.weather;
     _airTemperature = widget.post.airTemperature ?? 15.0;
     _waterTemperature = widget.post.waterTemperature ?? 15.0;
-    _existingImageUrl = widget.post.imageUrl;
   }
 
   @override
   void dispose() {
-    // すべてのコントローラーを破棄
     _egiNameController.dispose();
     _squidSizeController.dispose();
     _captionController.dispose();
@@ -75,63 +77,60 @@ class _EditPostPageState extends State<EditPostPage> {
     _tackleLineController.dispose();
     super.dispose();
   }
+  
+  Future<void> _pickImages() async {
+    final totalImages = _existingImageUrls.length + _newImageBytes.length;
+    if (totalImages >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('画像は3枚までです。')));
+      return;
+    }
 
-  Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-    );
-    if (pickedFile != null) {
-      final bytes = await pickedFile.readAsBytes();
-      setState(() {
-        _imageBytes = bytes;
-      });
+    final pickedFiles = await ImagePicker().pickMultipleMedia();
+    if (pickedFiles.isNotEmpty) {
+      for (final file in pickedFiles) {
+        if (_existingImageUrls.length + _newImageBytes.length < 3) {
+          _newImageBytes.add(await file.readAsBytes());
+        }
+      }
+      setState(() {});
     }
   }
 
   Future<void> _updatePost() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedWeather == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('天気を選択してください。')));
-      return;
-    }
-
-    setState(() {
-      _isUploading = true;
-    });
+    setState(() => _isUploading = true);
 
     try {
-      String imageUrl = _existingImageUrl!;
+      final user = FirebaseAuth.instance.currentUser!;
+      
+      // Firestoreに保存する最終的なURLリスト
+      final List<String> finalImageUrls = List.from(_existingImageUrls);
 
-      // 新しい画像が選択された場合は、古い画像を削除して新しい画像をアップロード
-      if (_imageBytes != null) {
-        // 古い画像がある場合は削除
-        if (_existingImageUrl != null) {
-          await FirebaseStorage.instance
-              .refFromURL(_existingImageUrl!)
-              .delete();
-        }
-        // 新しい画像をアップロード
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final ref = FirebaseStorage.instance.ref().child(
-          'posts/${widget.post.userId}/$fileName',
-        );
-        await ref.putData(_imageBytes!);
-        imageUrl = await ref.getDownloadURL();
+      // 1. 削除対象の画像をStorageから削除
+      for (final url in _deletedImageUrls) {
+        await FirebaseStorage.instance.refFromURL(url).delete();
       }
 
-      // Firestoreのドキュメントを更新
+      // 2. 新しい画像をStorageにアップロードし、URLを取得してリストに追加
+      for (final bytes in _newImageBytes) {
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final ref = FirebaseStorage.instance.ref('posts/${user.uid}/$fileName');
+        await ref.putData(bytes);
+        final downloadUrl = await ref.getDownloadURL();
+        finalImageUrls.add(downloadUrl);
+      }
+      
+      // 3. Firestoreのドキュメントを更新
       await FirebaseFirestore.instance
           .collection('posts')
           .doc(widget.post.id)
           .update({
-            'imageUrl': imageUrl,
-            'weather': _selectedWeather,
+            'imageUrls': finalImageUrls,
+            // TODO: 新しい画像に対応するサムネイルを生成・更新するCloud Functionsのロジックが必要
             'squidSize': double.tryParse(_squidSizeController.text) ?? 0.0,
-            'weight': _weightController.text.isEmpty
-                ? null
-                : double.tryParse(_weightController.text),
+            'caption': _captionController.text,
+            'weather': _selectedWeather,
+            'weight': _weightController.text.isEmpty ? null : double.tryParse(_weightController.text),
             'egiName': _egiNameController.text,
             'egiMaker': _egiMakerController.text,
             'tackleRod': _tackleRodController.text,
@@ -139,29 +138,20 @@ class _EditPostPageState extends State<EditPostPage> {
             'tackleLine': _tackleLineController.text,
             'airTemperature': _airTemperature,
             'waterTemperature': _waterTemperature,
-            'caption': _captionController.text,
           });
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('投稿を更新しました！')));
-        // 前の画面（詳細ページ）に戻る
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('投稿を更新しました。')));
+        // 編集ページを閉じて詳細ページに戻る
         Navigator.of(context).pop();
       }
     } catch (e) {
       print('更新エラー: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('エラーが発生しました: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('エラーが発生しました: $e')));
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -176,29 +166,70 @@ class _EditPostPageState extends State<EditPostPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              GestureDetector(
-                onTap: _pickImage,
-                child: Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade400),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.grey.shade200,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: _imageBytes != null
-                        ? Image.memory(_imageBytes!, fit: BoxFit.cover)
-                        : (_existingImageUrl != null
-                              ? Image.network(
-                                  _existingImageUrl!,
-                                  fit: BoxFit.cover,
-                                )
-                              : const Center(child: Text('画像がありません'))),
-                  ),
+              _buildSectionTitle('画像 (3枚まで)'),
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _existingImageUrls.length + _newImageBytes.length + 1,
+                  itemBuilder: (context, index) {
+                    final totalImages = _existingImageUrls.length + _newImageBytes.length;
+                    if (index == totalImages) {
+                      return totalImages < 3
+                          ? GestureDetector(
+                              onTap: _pickImages,
+                              child: Container(
+                                width: 100, height: 100,
+                                margin: const EdgeInsets.only(right: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.add_a_photo, color: Colors.grey),
+                              ),
+                            )
+                          : const SizedBox.shrink();
+                    }
+                    
+                    Widget imageWidget;
+                    if (index < _existingImageUrls.length) {
+                      imageWidget = CachedNetworkImage(imageUrl: _existingImageUrls[index], fit: BoxFit.cover);
+                    } else {
+                      imageWidget = Image.memory(_newImageBytes[index - _existingImageUrls.length], fit: BoxFit.cover);
+                    }
+
+                    return SizedBox(
+                      width: 100, height: 100,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            child: ClipRRect(borderRadius: BorderRadius.circular(8), child: imageWidget),
+                          ),
+                          Positioned(
+                            top: -14, right: -12,
+                            child: IconButton(
+                              icon: const Icon(Icons.cancel, color: Colors.black54, size: 20),
+                              onPressed: () {
+                                setState(() {
+                                  if (index < _existingImageUrls.length) {
+                                    final removedUrl = _existingImageUrls.removeAt(index);
+                                    _deletedImageUrls.add(removedUrl);
+                                  } else {
+                                    _newImageBytes.removeAt(index - _existingImageUrls.length);
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 24),
               const Center(
                 child: Text('画像をタップして変更', style: TextStyle(color: Colors.grey)),
               ),
@@ -353,26 +384,14 @@ class _EditPostPageState extends State<EditPostPage> {
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
             minimumSize: const Size.fromHeight(50),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             backgroundColor: Colors.blue,
             foregroundColor: Colors.white,
           ),
           onPressed: _isUploading ? null : _updatePost,
           child: _isUploading
-              ? const SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 3,
-                  ),
-                )
-              : const Text(
-                  '更新する',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+              ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+              : const Text('更新する', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ),
       ),
     );
@@ -381,14 +400,7 @@ class _EditPostPageState extends State<EditPostPage> {
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.blueGrey,
-        ),
-      ),
+      child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
     );
   }
 }
