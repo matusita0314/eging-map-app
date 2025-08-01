@@ -85,7 +85,7 @@ class PostFeedCard extends ConsumerWidget {
                     const Spacer(),
                     _buildHeaderInfo(Icons.location_on, realTimePost.region ?? '不明'),
                     const SizedBox(width: 20),
-                    _buildHeaderInfo(Icons.schedule, DateFormat('M/d').format(realTimePost.createdAt)),
+                    _buildHeaderInfo(Icons.schedule, DateFormat('yyyy年M月d日').format(realTimePost.createdAt)),
                   ],
                 ),
               ),

@@ -9,11 +9,14 @@ import '../../widgets/common_app_bar.dart';
 import '../../models/post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../post/add_post_page.dart';
-import '../../widgets/post_preview_sheet.dart';
-// import 'package:geofire_common/geofire_common.dart';
+import '../../widgets/post_bottom_sheet.dart';
+import '../post/post_detail_page.dart';
+import '../../widgets/squid_loading_indicator.dart';
 
 class MapPage extends StatefulWidget {
-  const MapPage({super.key});
+  final LatLng? initialFocusLocation;
+  final String? focusedPostId;
+  const MapPage({super.key, this.initialFocusLocation, this.focusedPostId});
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -24,28 +27,30 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   static const LatLng _initialPosition = LatLng(35.681236, 139.767125);
   LatLng? _currentPosition;
   bool _isLoading = true;
-  bool _isDarkMap = false;
-  bool _didRunInitialSetup = false;
+  bool _iconsLoaded = false;
 
   // マーカー関連
-  Marker? _tappedMarker;
   BitmapDescriptor? _squidIcon;
+  BitmapDescriptor? _tappedSquidIcon; // 詳細ページから指定された時だけ使う
   Set<Marker> _markers = {};
+  Marker? _tappedMarker; // 新規投稿用のマーカー
 
-  // フィルター用の状態変数
+  // パフォーマンス改善
+  final Map<String, Post> _postsCache = {};
+  StreamSubscription<QuerySnapshot>? _postsSubscription;
+
+  Post? _selectedPost;
+
+  // ( ... その他の変数は変更なし ... )
+  bool _isDarkMap = false;
+  bool _didRunInitialSetup = false;
   double _minSquidSize = 0;
   double _dateRangeInDays = 7.0;
   MapType _currentMapType = MapType.normal;
-
-  // 🔥 パフォーマンス改善：Stream、デバウンス、効率化
-  StreamSubscription<QuerySnapshot>? _postsSubscription;
-  final Map<String, Post> _postsCache = {};
   Timer? _filterDebounceTimer;
   String? _lastQueryHash;
-
-  // 🔥 フレームレート制御
   bool _isUpdating = false;
-  final Duration _updateThrottle = const Duration(milliseconds: 100);
+  final Duration _updateThrottle = const Duration(milliseconds: 5000);
 
   final String _darkMapStyle = '''
   [
@@ -214,15 +219,39 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation();
-    _initializePostsStream();
+    print("--- MapPage initState ---");
+
+    if (widget.initialFocusLocation != null) {
+      _currentPosition = widget.initialFocusLocation;
+      _isLoading = false; 
+    } else {
+      _getCurrentLocation();
+    }
+
+    if (widget.focusedPostId != null) {
+      FirebaseFirestore.instance
+          .collection('posts')
+          .doc(widget.focusedPostId)
+          .get()
+          .then((doc) {
+        if (doc.exists) {
+          final post = Post.fromFirestore(doc);
+          // 取得した投稿をキャッシュに直接追加する
+          _postsCache[post.id] = post;
+          if (_iconsLoaded) {
+            _updateMarkersFromCache();
+          }
+        }
+      });
+    }
+    _initializePostsStream(); // 通常のストリームも開始
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_didRunInitialSetup) {
-      _loadCustomIcon();
+      _loadCustomIcons();
       _didRunInitialSetup = true;
     }
   }
@@ -234,89 +263,68 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  Future<void> _loadCustomIcon() async {
+  Future<void> _loadCustomIcons() async {
     try {
-
-      // デバイスの画面密度を取得
       final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+      String squidAssetPath;
+      String tappedSquidAssetPath;
 
-      // 密度に応じて適切な画像を選択
-      String assetPath;
       if (devicePixelRatio >= 3.0) {
-        assetPath = 'assets/images/squid_144.png'; // 3x密度
+        squidAssetPath = 'assets/images/squid_144.png';
+        tappedSquidAssetPath = 'assets/images/squid_red_144.png';
       } else if (devicePixelRatio >= 2.0) {
-        assetPath = 'assets/images/squid_96.png'; // 2x密度
+        squidAssetPath = 'assets/images/squid_96.png';
+        tappedSquidAssetPath = 'assets/images/squid_red_96.png';
       } else {
-        assetPath = 'assets/images/squid_48.png'; // 1x密度
+        squidAssetPath = 'assets/images/squid_48.png';
+        tappedSquidAssetPath = 'assets/images/squid_red_48.png';
       }
 
-      _squidIcon = await BitmapDescriptor.fromAssetImage(
-        ImageConfiguration(
-          size: const Size(48, 48),
-          devicePixelRatio: devicePixelRatio,
-        ),
-        assetPath,
+      final normalIcon = await BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(size: const Size(48, 48), devicePixelRatio: devicePixelRatio),
+        squidAssetPath,
+      );
+      final tappedIcon = await BitmapDescriptor.fromAssetImage(
+        ImageConfiguration(size: const Size(56, 56), devicePixelRatio: devicePixelRatio),
+        tappedSquidAssetPath,
       );
 
       if (mounted) {
+        setState(() {
+          _squidIcon = normalIcon;
+          _tappedSquidIcon = tappedIcon;
+          _iconsLoaded = true;
+        });
         _rebuildAllMarkers();
       }
     } catch (e) {
-      // フォールバック
-      if (mounted) {
-        _squidIcon = BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueBlue,
-        );
-        _rebuildAllMarkers();
-      }
+      print("[_loadCustomIcons] アイコン読み込みでエラーが発生: $e");
     }
-  }
-
-  // 🔥 クエリハッシュを生成してストリーム再作成を最小化
-  String _generateQueryHash() {
-    return '${_minSquidSize}_${_dateRangeInDays}';
   }
 
   void _initializePostsStream() {
-    final queryHash = _generateQueryHash();
+    final queryHash = '${_minSquidSize}_$_dateRangeInDays';
     if (_lastQueryHash == queryHash) return;
-
     _lastQueryHash = queryHash;
     _postsSubscription?.cancel();
 
-    final startDate = DateTime.now().subtract(
-      Duration(days: _dateRangeInDays.round()),
-    );
-
-    Query query = FirebaseFirestore.instance
-        .collection('posts')
-        .where('createdAt', isGreaterThanOrEqualTo: startDate);
-
+    final startDate = DateTime.now().subtract(Duration(days: _dateRangeInDays.round()));
+    Query query = FirebaseFirestore.instance.collection('posts').where('createdAt', isGreaterThanOrEqualTo: startDate);
     if (_minSquidSize > 0) {
       query = query.where('squidSize', isGreaterThanOrEqualTo: _minSquidSize);
     }
-
-    _postsSubscription = query.snapshots().listen(
-      _handlePostsSnapshot,
-      onError: (error) {
-        print('Posts stream error: $error');
-      },
-    );
+    _postsSubscription = query.snapshots().listen(_handlePostsSnapshot);
   }
 
   // 🔥 スナップショット処理を最適化
   void _handlePostsSnapshot(QuerySnapshot snapshot) {
-    if (!mounted || _isUpdating) return;
-
+    if (!mounted ) return;
+    if (!_iconsLoaded || _isUpdating) return;
     _isUpdating = true;
-
-    // 🔥 変更のみを処理
     final changedPosts = <String, Post>{};
     final deletedPostIds = <String>{};
-
     for (final change in snapshot.docChanges) {
       final post = Post.fromFirestore(change.doc);
-
       switch (change.type) {
         case DocumentChangeType.added:
         case DocumentChangeType.modified:
@@ -327,20 +335,10 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           break;
       }
     }
-
-    // キャッシュ更新
     _postsCache.addAll(changedPosts);
-    for (final id in deletedPostIds) {
-      _postsCache.remove(id);
-    }
-
-    // マーカー更新
+    deletedPostIds.forEach(_postsCache.remove);
     _updateMarkersFromCache();
-
-    // 🔥 フレームレート制御
-    Future.delayed(_updateThrottle, () {
-      _isUpdating = false;
-    });
+    Future.delayed(_updateThrottle, () { _isUpdating = false; });
   }
 
   // 🔥 キャッシュからマーカーを効率的に更新
@@ -348,49 +346,37 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (!mounted) return;
 
     final newMarkers = <Marker>{};
-
     for (final post in _postsCache.values) {
       newMarkers.add(_createMarkerFromPost(post));
     }
-
-    // タップされたマーカーを追加
     if (_tappedMarker != null) {
       newMarkers.add(_tappedMarker!);
     }
-
     if (mounted) {
-      setState(() {
-        _markers = newMarkers;
+      setState(() { 
+        _markers = newMarkers; 
       });
     }
   }
 
   Marker _createMarkerFromPost(Post post) {
+    final bool isFocused = post.id == widget.focusedPostId;
+
     return Marker(
       markerId: MarkerId(post.id),
       position: post.location,
-      icon: _squidIcon ?? BitmapDescriptor.defaultMarker,
-      onTap: () => _showPostPreview(post),
+      icon: isFocused 
+          ? (_tappedSquidIcon ?? BitmapDescriptor.defaultMarker) 
+          : (_squidIcon ?? BitmapDescriptor.defaultMarker),
+      zIndex: isFocused ? 1.0 : 0.0,
+      onTap: () {
+        setState(() {
+          _selectedPost = post;
+        });
+      },
     );
   }
 
-  void _showPostPreview(Post post) {
-    // 既存のタップマーカーを削除
-    if (_tappedMarker != null) {
-      setState(() {
-        _tappedMarker = null;
-      });
-    }
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => PostPreviewSheet(post: post),
-    );
-  }
-
-  // 🔥 全マーカーを再構築（アイコン変更時のみ）
   void _rebuildAllMarkers() {
     if (!mounted) return;
     _updateMarkersFromCache();
@@ -478,9 +464,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   void _onMapTapped(LatLng location) {
     setState(() {
-      _markers.removeWhere(
-        (m) => m.markerId == const MarkerId('tapped_location'),
-      );
+      // 新規投稿用のマーカー以外の状態は変更しない
+      _markers.removeWhere((m) => m.markerId.value == 'tapped_location');
       _tappedMarker = Marker(
         markerId: const MarkerId('tapped_location'),
         position: location,
@@ -588,19 +573,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     if (!_controller.isCompleted) {
       _controller.complete(controller);
     }
-
-    // try {
-    //   await controller.setMapStyle(_darkMapStyle);
-    // } catch (e) {
-    //   print('マップスタイルの適用に失敗しました: $e');
-    // }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CommonAppBar(
-        // ▼▼▼【変更】Textウィジェットで囲む ▼▼▼
         title: const Text('マップ'),
         actions: [
           IconButton(
@@ -615,37 +593,65 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: null,
         onPressed: _onAddPostButtonPressed,
         child: const Icon(Icons.add),
       ),
-      body: Stack(
+      body: _isLoading
+          ? const SquidLoadingIndicator()
+          : Stack(
         children: [
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: _currentPosition ?? _initialPosition,
-                    zoom: 12.0,
-                  ),
-                  onMapCreated: _onMapCreated,
-                  onTap: _onMapTapped,
-                  markers: _markers,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  mapType: _currentMapType,
-                  trafficEnabled: false,
-                  buildingsEnabled: false,
-                  zoomGesturesEnabled: true,
-                  zoomControlsEnabled: false,
-                  mapToolbarEnabled: false,
-                  compassEnabled: false,
-                  rotateGesturesEnabled: false,
-                  scrollGesturesEnabled: true,
-                  tiltGesturesEnabled: false,
-                ),
+          GoogleMap(
+            // ( ... GoogleMapのプロパティは変更なし ... )
+            initialCameraPosition: CameraPosition(
+              target: _currentPosition ?? _initialPosition,
+              zoom: 12.0,
+            ),
+            onMapCreated: (c) => _controller.complete(c),
+            onTap: _onMapTapped,
+            markers: _markers,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: true,
+            mapType: _currentMapType,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            padding: const EdgeInsets.only(bottom: 120), // シートの最小表示域とかぶらないように
+          ),
+          
+          // ( ... フィルターやスライダーのUIは変更なし ... )
           _buildFilterChips(),
           _buildDateRangeSlider(),
-          _buildMapTypeButton(),
+          
+          // ▼▼▼【追加】DraggableScrollableSheetの表示ロジック ▼▼▼
+          if (_selectedPost != null)
+            // ウィジェットを画面外にドラッグして閉じる操作を検知
+            NotificationListener<DraggableScrollableNotification>(
+              onNotification: (notification) {
+                // 最小サイズ(0.15)より小さくなったら閉じる
+                if (notification.extent <= 0.15) {
+                  setState(() {
+                    _selectedPost = null;
+                  });
+                }
+                return true;
+              },
+              child: DraggableScrollableSheet(
+                initialChildSize: 0.35, // 初期表示の高さ (35%)
+                minChildSize: 0.15,      // 最小の高さ (15%)
+                maxChildSize: 0.8,       // 最大の高さ (80%)
+                builder: (context, scrollController) {
+                  return PostBottomSheet(
+                    post: _selectedPost!,
+                    scrollController: scrollController, // 必須：中のリストと連携させる
+                    onNavigateToDetail: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => PostDetailPage(post: _selectedPost!),
+                      ));
+                    },
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );

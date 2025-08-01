@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:intl/intl.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
-
+import '../map/map_page.dart';
 import '../../models/comment_model.dart';
 import '../../models/post_model.dart';
 import '../account/account.dart';
@@ -314,6 +314,7 @@ class _PostDetailViewState extends State<_PostDetailView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // ▼▼▼【修正】ここからレイアウトを整理 ▼▼▼
                         Text(
                           '${widget.post.squidType} ${widget.post.squidSize} cm',
                           style: const TextStyle(
@@ -345,6 +346,29 @@ class _PostDetailViewState extends State<_PostDetailView> {
                               ),
                             ],
                           ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.map_outlined, size: 18),
+                          label: const Text('地図上で見る'),
+                          style: ElevatedButton.styleFrom(
+                            foregroundColor: Theme.of(context).primaryColor,
+                            backgroundColor:
+                                Theme.of(context).primaryColor.withOpacity(0.1),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(MaterialPageRoute(
+                              builder: (context) => MapPage(
+                                focusedPostId: widget.post.id,
+                                initialFocusLocation: widget.post.location,
+                              ),
+                            ));
+                          },
+                        ),
+                        // ▲▲▲ ここまで ▲▲▲
+                        
                         _buildSectionTitle('釣果情報'),
                         _buildInfoRow(
                           Icons.label_outline,
