@@ -5,8 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../features/home_feed/timeline_page.dart';
 import '../features/map/map_page.dart';
 import '../features/account/account.dart';
-import '../features/tournament/tournament_page.dart';
-import '../features/chat/chat_page.dart';
+import '../features/tournament/tournament_portal_page.dart';
 import '../features/challenge/challenge_page.dart';
 
 class AppScaffold extends ConsumerStatefulWidget {
@@ -27,7 +26,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
     _pages = <Widget>[
       const TimelinePage(), // ホーム
       const MapPage(),
-      const TournamentPage(),
+      const TournamentPortalPage(),
       const ChallengePage(),
       MyPage(userId: _user.uid), // アカウント
     ];

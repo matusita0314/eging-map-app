@@ -28,6 +28,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   LatLng? _currentPosition;
   bool _isLoading = true;
   bool _iconsLoaded = false;
+  
 
   // マーカー関連
   BitmapDescriptor? _squidIcon;
@@ -602,12 +603,11 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           : Stack(
         children: [
           GoogleMap(
-            // ( ... GoogleMapのプロパティは変更なし ... )
             initialCameraPosition: CameraPosition(
               target: _currentPosition ?? _initialPosition,
               zoom: 12.0,
             ),
-            onMapCreated: (c) => _controller.complete(c),
+            onMapCreated: _onMapCreated,
             onTap: _onMapTapped,
             markers: _markers,
             myLocationEnabled: true,

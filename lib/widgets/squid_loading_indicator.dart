@@ -33,10 +33,8 @@ class _SquidLoadingIndicatorState extends State<SquidLoadingIndicator>
   late final Animation<double> _squidScale;
 
   late final List<AnimationController> _bubbleControllers;
-  // ▼▼▼【変更】泡の数を 15 から 50 に増量 ▼▼▼
   final int _bubbleCount = 50;
   
-  // ▼▼▼【追加】それぞれの泡の大きさとX位置を保持するリスト ▼▼▼
   late final List<double> _bubbleSizes;
   late final List<double> _bubblePositions;
 

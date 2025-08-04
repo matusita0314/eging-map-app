@@ -49,5 +49,12 @@
 <string>マップ機能で現在地を表示するために位置情報を使用します。</string>
 <key>NSPhotoLibraryUsageDescription</key>
 <string>釣果の写真をアップロードするために、写真ライブラリへのアクセスが必要です。</string>
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>大会への釣果投稿やプロフィール画像の撮影のためにカメラを使用します。</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>動画撮影時に音声を含めるためにマイクを使用します。</string>
+    </dict>
+</plist>
 </dict>
 </plist>

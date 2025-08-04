@@ -327,7 +327,6 @@ class _FilterHeader extends ConsumerWidget {
                   onPressed: onFilterPressed,
                 ),
                 Expanded(
-                  // ▼▼▼【修正】フィルターがない場合のヒント表示を追加 ▼▼▼
                   child: activeFilters.isEmpty
                       ? GestureDetector(
                           onTap: onFilterPressed,
@@ -411,7 +410,7 @@ typedef FetchNextPageCallback = void Function(WidgetRef ref);
 class _FirestoreTimelineFeedView extends ConsumerWidget {
   final AsyncNotifierProvider<AsyncNotifier<List<Post>>, List<Post>> provider;
   final FetchNextPageCallback fetchNextPage;
-  final StateProvider<SortBy> sortByProvider; // 並び替えProviderを受け取る
+  final StateProvider<SortBy> sortByProvider;
 
   const _FirestoreTimelineFeedView({
     required this.provider, 

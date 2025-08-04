@@ -259,7 +259,7 @@ class _PostDetailViewState extends State<_PostDetailView> {
                     ),
                   ),
                   AspectRatio(
-                    aspectRatio: 4 / 3,
+                    aspectRatio: 1.0,
                     child: PageView.builder(
                       controller: _pageController,
                       itemCount: widget.post.imageUrls.length,

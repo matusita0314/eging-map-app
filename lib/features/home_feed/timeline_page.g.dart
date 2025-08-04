@@ -7,7 +7,7 @@ part of 'timeline_page.dart';
 // **************************************************************************
 
 String _$followingFeedNotifierHash() =>
-    r'dde671f03e46d61f95de81d4ef6c43988dbb3777';
+    r'7b6c332de724c01a48a23bc650010c0d9f27d184';
 
 /// See also [FollowingFeedNotifier].
 @ProviderFor(FollowingFeedNotifier)
@@ -23,7 +23,7 @@ final followingFeedNotifierProvider =
     );
 
 typedef _$FollowingFeedNotifier = AsyncNotifier<List<Post>>;
-String _$todayFeedNotifierHash() => r'd281b47089f8bf270005b56d3e3c06cead3f2034';
+String _$todayFeedNotifierHash() => r'1c029b38629d77e23d4818d81bb9f0f6d50ada16';
 
 /// See also [TodayFeedNotifier].
 @ProviderFor(TodayFeedNotifier)

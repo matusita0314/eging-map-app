@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 import 'core/fcm_service.dart';
 import 'core/firebase_options.dart';
@@ -17,6 +18,12 @@ import 'features/account/account.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await FirebaseAppCheck.instance.activate(
+    // Androidのデバッグ用プロバイダ
+    androidProvider: AndroidProvider.debug,
+    // iOSのデバッグ用プロバイダ
+    appleProvider: AppleProvider.debug,
+  );
   print("--- バックグラウンドでメッセージを受信 ---");
   print("メッセージID: ${message.messageId}");
   if (message.notification != null) {
