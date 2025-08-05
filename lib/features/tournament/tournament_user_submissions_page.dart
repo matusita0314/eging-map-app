@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:egingapp/models/tournament_model.dart';
 
 import 'tournament_post_detail_page.dart';
 
 class TournamentUserSubmissionsPage extends StatelessWidget {
+  final Tournament tournament;
   final String tournamentId;
   final String userId;
   final String userName;
 
   const TournamentUserSubmissionsPage({
     super.key,
+    required this.tournament,
     required this.tournamentId,
     required this.userId,
     required this.userName,
@@ -57,6 +60,7 @@ class TournamentUserSubmissionsPage extends StatelessWidget {
                 onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (context) => TournamentPostDetailPage(
+                      tournament: tournament,
                       tournamentId: tournamentId,
                       postId: post.id,
                     ),

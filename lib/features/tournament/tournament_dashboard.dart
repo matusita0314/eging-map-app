@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import './tournament_post_detail_page.dart';
 import 'add_tournament_post_page.dart';
@@ -82,11 +83,103 @@ class _MyStatusTab extends StatelessWidget {
   final Tournament tournament;
   const _MyStatusTab({required this.tournament});
 
+  Widget _buildLikeStatusCard(Map<String, dynamic> myEntryData) {
+    final score = myEntryData['currentScore'] ?? 0;
+    final rank = myEntryData['currentRank'] as int?;
+
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                
+                const Icon(Icons.favorite, color: Colors.pink, size: 36),
+                const SizedBox(width: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.pink.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+              rank != null ? 'あなたの現在の順位は $rank 位です' : 'あなたの順位は集計中です',
+              style: TextStyle(fontSize: 16,fontWeight: FontWeight.bold,color: Colors.pink.shade800,),
+            ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+                    '合計 $score いいね',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.pink.shade800,
+                    ),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- ▼▼▼【追加】メイン大会用のステータスカード（既存のUI） ▼▼▼ ---
+  Widget _buildRankStatusCard(Map<String, dynamic> myEntryData) {
+    final rank = myEntryData['currentRank'] as int?;
+    final score = myEntryData['currentScore'];
+    final metricUnit = tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
+
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.emoji_events, color: Colors.amber, size: 40),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    rank != null ? 'あなたの順位は$rank位です ！' : 'あなたの順位は集計中です',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'あなたのスコア: ${score ?? 0} $metricUnit',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser!;
-    final metricUnit = tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
-  
+    final metricUnit = tournament.rule.metric == 'SIZE'
+        ? 'cm'
+        : (tournament.rule.metric == 'COUNT' ? '匹' : 'いいね');
     final Query postsQuery = FirebaseFirestore.instance
         .collection('tournaments')
         .doc(tournament.id)
@@ -124,50 +217,15 @@ class _MyStatusTab extends StatelessWidget {
               }
 
               final myEntryData = snapshot.data!.data() as Map<String, dynamic>;
-              final rank = myEntryData['currentRank'] as int?;
-              final score = myEntryData['currentScore'];
+              
+              // final rank = myEntryData['currentRank'] as int?;
+              // final score = myEntryData['currentScore'];
 
-              return Card(
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.emoji_events, color: Colors.amber, size: 40),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.shade100,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              // rankがあれば表示、なければ「集計中」と表示
-                              rank != null ? 'あなたの順位は$rank位です ！' : 'あなたの順位は：集計中です',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.amber.shade900,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'あなたのスコア: ${score ?? 0} $metricUnit',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
+              if (tournament.rule.metric == 'LIKE_COUNT') {
+                return _buildLikeStatusCard(myEntryData);
+              } else {
+                return _buildRankStatusCard(myEntryData);
+              }
             },
           ),
           const SizedBox(height: 24),
@@ -261,7 +319,6 @@ class _MyStatusTab extends StatelessWidget {
                   );
                 },
               );
-              // ▲▲▲ ここまで修正 ▲▲▲
             },
           ),
         ],
@@ -314,7 +371,9 @@ class _RankingsTab extends StatelessWidget {
                   final doc = rankings[index];
                   final rankData = doc.data() as Map<String, dynamic>;
                   final rank = rankData['rank'] as int;
-                  final metricUnit = tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
+                  final metricUnit = tournament.rule.metric == 'SIZE'
+          ? 'cm'
+          : (tournament.rule.metric == 'COUNT' ? '匹' : 'いいね');
                   
                   return _RankingTile(
                     rank: rank,
@@ -327,6 +386,7 @@ class _RankingsTab extends StatelessWidget {
                         if (postId != null) {
                           Navigator.of(context).push(MaterialPageRoute(
                             builder: (context) => TournamentPostDetailPage(
+                              tournament: tournament,
                               tournamentId: tournament.id,
                               postId: postId,
                             ),
@@ -335,6 +395,7 @@ class _RankingsTab extends StatelessWidget {
                       } else {
                         Navigator.of(context).push(MaterialPageRoute(
                           builder: (context) => TournamentUserSubmissionsPage(
+                            tournament: tournament,
                             tournamentId: tournament.id,
                             userId: doc.id,
                             userName: rankData['userName'] ?? '名無しさん',
@@ -387,6 +448,7 @@ class _PodiumProfile extends StatelessWidget {
   final Tournament tournament;
   final int rank;
   final double height;
+  
 
   const _PodiumProfile({
     this.doc,
@@ -399,7 +461,9 @@ class _PodiumProfile extends StatelessWidget {
   Widget build(BuildContext context) {
     final data = doc?.data() as Map<String, dynamic>?;
     final userId = doc?.id;
-    final metricUnit = tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
+    final metricUnit = tournament.rule.metric == 'SIZE'
+        ? 'cm'
+        : (tournament.rule.metric == 'COUNT' ? '匹' : 'いいね');
 
     
     Color medalColor;
@@ -414,6 +478,7 @@ class _PodiumProfile extends StatelessWidget {
       onTap: (userId != null && data != null) ? () {
         Navigator.of(context).push(MaterialPageRoute(
           builder: (context) => TournamentUserSubmissionsPage(
+            tournament: tournament,
             tournamentId: tournament.id,
             userId: userId,
             userName: data['userName'] ?? '',
@@ -553,50 +618,84 @@ class _TournamentFeedCard extends ConsumerWidget {
     this.showAuthorInfo = true,
   });
 
-  Widget _buildStyledScoreDisplay(
+   Widget _buildStyledScoreDisplay(
       Map<String, dynamic> postData, Tournament tournament) {
-    final squidType = postData['squidType'] as String? ?? '釣果';
-    String scoreText = '';
-    final metricUnit = tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
-
-    if (tournament.rule.metric == 'SIZE') {
-      final judgedSize = postData['judgedSize'] as num?;
-      if (judgedSize != null) {
-        scoreText = 'サイズ: $judgedSize $metricUnit';
-      }
-    } else if (tournament.rule.metric == 'COUNT') {
-      final judgedCount = postData['judgedCount'] as num?;
-      if (judgedCount != null) {
-        scoreText = '匹数: $judgedCount $metricUnit';
-      }
-    }
-
-    // イカの種類とスコアを結合
-    final displayText = '$squidType $scoreText'.trim();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade100,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min, // コンテンツに合わせて幅を調整
-        children: [
-          Icon(Icons.military_tech_outlined,
-              color: Colors.amber.shade800, size: 20),
-          const SizedBox(width: 8),
-          Text(
-            displayText,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.amber.shade900,
-            ),
+    // いいね数を競う大会の場合
+    if (tournament.rule.metric == 'LIKE_COUNT') {
+      final likeCount = postData['likeCount'] ?? 0;
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.pink.shade50,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.pink.shade100),
           ),
-        ],
-      ),
-    );
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.favorite, color: Colors.pink, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                '$likeCount いいね',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.pink.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    // 【分岐】それ以外（メイン大会）の場合
+    else {
+      final squidType = postData['squidType'] as String? ?? '釣果';
+      String scoreText = '';
+      final metricUnit =
+          tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
+
+      if (tournament.rule.metric == 'SIZE') {
+        final judgedSize = postData['judgedSize'] as num?;
+        if (judgedSize != null) {
+          scoreText = 'サイズ: $judgedSize $metricUnit';
+        }
+      } else if (tournament.rule.metric == 'COUNT') {
+        final judgedCount = postData['judgedCount'] as num?;
+        if (judgedCount != null) {
+          scoreText = '匹数: $judgedCount $metricUnit';
+        }
+      }
+
+      final displayText = '$squidType $scoreText'.trim();
+
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.amber.shade100,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.military_tech_outlined,
+                  color: Colors.amber.shade800, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                displayText,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amber.shade900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -605,7 +704,7 @@ class _TournamentFeedCard extends ConsumerWidget {
     final postId = post.id;
     final currentUser = FirebaseAuth.instance.currentUser!;
     final dynamic imageUrlsData = postData['imageUrls'] ?? postData['imageUrl'];
-    List<String> imageUrls = [];
+    List<String> imageUrls = List<String>.from(imageUrlsData);
     if (imageUrlsData is List) {
       // 新しいデータ形式 (List<dynamic>) の場合
       imageUrls = List<String>.from(imageUrlsData.map((e) => e.toString()));
@@ -613,7 +712,6 @@ class _TournamentFeedCard extends ConsumerWidget {
       // 古いデータ形式 (String) の場合
       imageUrls = [imageUrlsData];
     }
-    final firstImageUrl = imageUrls.isNotEmpty ? imageUrls.first : null;
 
     // 必要なデータを安全に抽出
     final userName = postData['userName'] as String? ?? '名無しさん';
@@ -625,6 +723,8 @@ class _TournamentFeedCard extends ConsumerWidget {
     final likeCount = postData['likeCount'] ?? 0;
     final commentCount = postData['commentCount'] ?? 0;
     final judgedCount = postData['judgedCount'] as num?;
+    final pageController = PageController();
+
 
     // いいね状態をリアルタイムで監視
     final isLikedStream = FirebaseFirestore.instance
@@ -668,22 +768,48 @@ class _TournamentFeedCard extends ConsumerWidget {
             ),
           
           // --- 投稿画像 ---
-          if (firstImageUrl != null)
+          if (imageUrls.isNotEmpty)
             GestureDetector(
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => TournamentPostDetailPage(tournamentId: tournament.id, postId: postId))),
-            child: AspectRatio(
-              aspectRatio: 1.2, // 1:1の比率に固定
-              child: Container(
-                color: Colors.grey.shade200,
-                child: firstImageUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: firstImageUrl,
-                      fit: BoxFit.cover,
-                    )
-                  : const Icon(Icons.image_not_supported, color: Colors.grey),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (context) => TournamentPostDetailPage(
+                        tournament: tournament,
+                        tournamentId: tournament.id,
+                        postId: postId,
+                      ))),
+              child: AspectRatio(
+                aspectRatio: 1.2,
+                child: Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    PageView.builder(
+                      controller: pageController,
+                      itemCount: imageUrls.length,
+                      itemBuilder: (context, index) {
+                        return CachedNetworkImage(
+                          imageUrl: imageUrls[index],
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(color: Colors.grey.shade200),
+                          errorWidget: (context, url, error) => const Icon(Icons.image_not_supported, color: Colors.grey),
+                        );
+                      },
+                    ),
+                    // 複数枚ある場合のみインジケータを表示
+                    if (imageUrls.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: SmoothPageIndicator(
+                          controller: pageController,
+                          count: imageUrls.length,
+                          effect: ScrollingDotsEffect(
+                            dotHeight: 8,
+                            dotWidth: 8,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
           
           // --- 釣果情報 ---
           Padding(
@@ -739,6 +865,7 @@ class _TournamentFeedCard extends ConsumerWidget {
                       icon: const Icon(Icons.chat_bubble_outline, color: Colors.grey),
                       onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (context) => TournamentPostDetailPage(
+                          tournament: tournament,
                           tournamentId: tournament.id,
                           postId: postId,
                           scrollToComments: true,

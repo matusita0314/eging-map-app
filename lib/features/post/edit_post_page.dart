@@ -192,7 +192,8 @@ class _EditPostPageState extends State<EditPostPage> {
                     }
                     
                     Widget imageWidget;
-                    if (index < _existingImageUrls.length) {
+                    final isExistingImage = index < _existingImageUrls.length;
+                    if (isExistingImage) {
                       imageWidget = CachedNetworkImage(imageUrl: _existingImageUrls[index], fit: BoxFit.cover);
                     } else {
                       imageWidget = Image.memory(_newImageBytes[index - _existingImageUrls.length], fit: BoxFit.cover);
@@ -203,9 +204,27 @@ class _EditPostPageState extends State<EditPostPage> {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            child: ClipRRect(borderRadius: BorderRadius.circular(8), child: imageWidget),
+                          // GestureDetectorを追加
+                          GestureDetector(
+                             onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => Dialog(
+                                  backgroundColor: Colors.transparent,
+                                  insetPadding: const EdgeInsets.all(10),
+                                  child: InteractiveViewer(
+                                    // 既存画像か新規画像かで表示を切り替え
+                                    child: isExistingImage
+                                      ? CachedNetworkImage(imageUrl: _existingImageUrls[index], fit: BoxFit.contain)
+                                      : Image.memory(_newImageBytes[index - _existingImageUrls.length], fit: BoxFit.contain),
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              child: ClipRRect(borderRadius: BorderRadius.circular(8), child: imageWidget),
+                            ),
                           ),
                           Positioned(
                             top: -14, right: -12,

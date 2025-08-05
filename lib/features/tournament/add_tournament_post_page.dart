@@ -8,7 +8,9 @@ import '../../models/tournament_model.dart';
 
 class TournamentSubmissionPage extends StatefulWidget {
   final Tournament tournament;
-  const TournamentSubmissionPage({super.key, required this.tournament});
+  final DocumentSnapshot? post;
+
+  const TournamentSubmissionPage({super.key, required this.tournament, this.post});
 
   @override
   State<TournamentSubmissionPage> createState() => _TournamentSubmissionPageState();
@@ -18,12 +20,16 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
   bool _isUploading = false;
   final _formKey = GlobalKey<FormState>();
 
+  bool get isEditing => widget.post != null;
+  
+
   final List<Uint8List> _imageBytesList = [];
   String? _selectedWeather;
   String? _selectedSquidType;
   double _airTemperature = 15.0;
   double _waterTemperature = 15.0;
 
+  final List<IngredientController> _ingredientControllers = [];
   final _egiNameController = TextEditingController();
   final _weightController = TextEditingController();
   final _tackleRodController = TextEditingController();
@@ -32,7 +38,19 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
   final _egiMakerController = TextEditingController();
   final _commentController = TextEditingController();
   final _countController = TextEditingController();
+  final _ingredientsController = TextEditingController();
+  final _processController = TextEditingController();
+  final _impressionController = TextEditingController();
+  final _tackleLureController = TextEditingController();
+  final _appealPointController = TextEditingController();
 
+  @override
+    void initState() {
+      super.initState();
+      if (widget.tournament.name.contains("料理")) {
+        _ingredientControllers.add(IngredientController());
+      }
+    }
 
   @override
   void dispose() {
@@ -44,12 +62,19 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     _egiMakerController.dispose();
     _commentController.dispose();
     _countController.dispose();
+    _ingredientsController.dispose();
+    _processController.dispose();
+    _impressionController.dispose();  
+    _tackleLureController.dispose();
+    _appealPointController.dispose();
+    _ingredientControllers.forEach((c) => c.dispose());
     super.dispose();
   }
 
   // カメラでの画像選択を強制
-  Future<void> _takePicture() async {
+  Future<void> _pickImages() async {
     final maxImages = widget.tournament.rule.maxImageCount;
+    final bool useCamera = widget.tournament.rule.metric == 'SIZE' || widget.tournament.rule.metric == 'COUNT';
 
     if (_imageBytesList.length >= maxImages) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -59,14 +84,23 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     }
     
     // ImagePickerをカメラモードで起動
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.camera);
-    
-    if (pickedFile != null) {
-      final bytes = await pickedFile.readAsBytes();
-      // 撮影した画像をリストに追加して、画面を更新
-      setState(() {
-        _imageBytesList.add(bytes);
-      });
+    final picker = ImagePicker();
+    if (useCamera) {
+      final pickedFile = await picker.pickImage(source: ImageSource.camera);
+      if (pickedFile != null) {
+        final bytes = await pickedFile.readAsBytes();
+        setState(() => _imageBytesList.add(bytes));
+      }
+    } else {
+      final pickedFiles = await picker.pickMultipleMedia();
+      if (pickedFiles.isNotEmpty) {
+        for (final file in pickedFiles) {
+          if (_imageBytesList.length < maxImages) {
+            _imageBytesList.add(await file.readAsBytes());
+          }
+        }
+        setState(() {});
+      }
     }
   }
 
@@ -75,7 +109,11 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     if (_imageBytesList.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('写真を1枚以上撮影してください。')));
     return;
-  }
+      } 
+    if (widget.tournament.name.contains("料理") && _ingredientControllers.every((c) => c.nameController.text.isEmpty)) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('材料を1つ以上入力してください。')));
+        return;
+      }
     setState(() => _isUploading = true);
 
     try {
@@ -98,24 +136,45 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
         'userName': _currentUser.displayName ?? '名無しさん',
         'userPhotoUrl': _currentUser.photoURL ?? '',
         'createdAt': Timestamp.now(),
-        'status': 'pending',
-        'judgedSize': null,
-        'judgedCount': int.tryParse(_countController.text) ?? 0,
+        'status': widget.tournament.rule.judgingType == 'MANUAL' ? 'pending' : 'approved',
         'imageUrls': downloadUrls,
-        'squidType': _selectedSquidType,
-        'egiName': _egiNameController.text,
-        'weather': _selectedWeather,
-        'weight': _weightController.text.isEmpty ? null : double.tryParse(_weightController.text),
-        'airTemperature': _airTemperature,
-        'waterTemperature': _waterTemperature,
-        'egiMaker': _egiMakerController.text,
-        'tackleRod': _tackleRodController.text,
-        'tackleReel': _tackleReelController.text,
-        'tackleLine': _tackleLineController.text,
-        'comment': _commentController.text,
         'likeCount': 0,
         'commentCount': 0,
       };
+
+      final metric = widget.tournament.rule.metric;
+      if (metric == 'SIZE' || metric == 'COUNT') {
+        submissionData.addAll({
+          'squidType': ?_selectedSquidType,
+          'egiName': _egiNameController.text,
+          'weather': ?_selectedWeather,
+          'judgedCount': int.tryParse(_countController.text) ?? 0,
+        });
+      } else if (metric == 'LIKE_COUNT') {
+        // IDで大会を判定（より安全なのはruleにtypeフィールドを追加すること）
+        if (widget.tournament.name.contains("料理")) {
+          final ingredientsList = _ingredientControllers
+              .where((c) => c.nameController.text.isNotEmpty)
+              .map((c) => {
+                    'name': c.nameController.text,
+                    'quantity': c.quantityController.text,
+                  })
+              .toList();
+           submissionData.addAll({
+            'ingredients': ingredientsList,
+            'process': _processController.text,
+            'impression': _impressionController.text,
+          });
+        } else if (widget.tournament.name.contains("タックル")) {
+           submissionData.addAll({
+            'tackleRod': _tackleRodController.text,
+            'tackleReel': _tackleReelController.text,
+            'lure': _tackleLureController.text,
+            'tackleLine': _tackleLineController.text,
+            'appealPoint': _appealPointController.text,
+          });
+        }
+      }
 
       // 3. Firestoreに書き込む
       await FirebaseFirestore.instance
@@ -125,13 +184,15 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
           .add(submissionData);
 
       if (mounted) {
+        final message = widget.tournament.rule.judgingType == 'MANUAL'
+            ? '釣果を提出しました！運営の判定をお待ちください。'
+            : '投稿が完了しました！';
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('釣果を提出しました！運営の判定をお待ちください。')),
+          SnackBar(content: Text(message)),
         );
-        Navigator.of(context).pop();
       }
     } catch (e) {
-      print('提出エラー: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('エラーが発生しました: $e')));
       }
@@ -140,10 +201,199 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     }
   }
 
+  Widget _buildMainTournamentForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSectionTitle('必須項目'),
+          DropdownButtonFormField<String>(
+            value: _selectedSquidType,
+            decoration: const InputDecoration(labelText: 'イカの種類 *', border: OutlineInputBorder()),
+            items: ['アオリイカ', 'コウイカ', 'ヤリイカ', 'スルメイカ', 'ヒイカ', 'モンゴウイカ']
+                .map((String value) => DropdownMenuItem<String>(value: value, child: Text(value)))
+                .toList(),
+            onChanged: (String? newValue) => setState(() => _selectedSquidType = newValue),
+            validator: (value) => value == null ? '必須項目です' : null,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _egiNameController,
+            decoration: const InputDecoration(labelText: 'エギ・ルアー名 *', border: OutlineInputBorder()),
+            validator: (value) => value!.isEmpty ? '必須項目です' : null,
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedWeather,
+            decoration: const InputDecoration(labelText: '天気 *', border: OutlineInputBorder()),
+            items: ['晴れ', '快晴', '曇り', '雨']
+                .map((String value) => DropdownMenuItem<String>(value: value, child: Text(value)))
+                .toList(),
+            onChanged: (String? newValue) => setState(() => _selectedWeather = newValue),
+            validator: (value) => value == null ? '必須項目です' : null,
+          ),
+          const SizedBox(height: 24),
+          _buildSectionTitle('任意項目'),
+          TextFormField(
+            controller: _weightController,
+            decoration: const InputDecoration(labelText: '重さ (g)', border: OutlineInputBorder()),
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 16),
+          _buildTemperatureSlider('気温', _airTemperature, -10, 40, (v) => setState(() => _airTemperature = v)),
+          const SizedBox(height: 16),
+          _buildTemperatureSlider('水温', _waterTemperature, 0, 35, (v) => setState(() => _waterTemperature = v)),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _egiMakerController,
+            decoration: const InputDecoration(labelText: 'エギ・ルアーメーカー', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _tackleRodController,
+            decoration: const InputDecoration(labelText: 'ロッド', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _tackleReelController,
+            decoration: const InputDecoration(labelText: 'リール', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _tackleLineController,
+            decoration: const InputDecoration(labelText: 'ライン', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _commentController,
+            decoration: const InputDecoration(labelText: 'ひとこと', border: OutlineInputBorder()),
+            maxLines: 3,
+          ),
+      ],
+    );
+  }
+
+  // 料理コンテスト用のフォーム
+  Widget _buildCookingContestForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSectionTitle('材料 *'),
+        // 材料リスト入力欄
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _ingredientControllers.length,
+          itemBuilder: (context, index) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _ingredientControllers[index].nameController,
+                      decoration: const InputDecoration(labelText: '材料名', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _ingredientControllers[index].quantityController,
+                      decoration: const InputDecoration(labelText: '分量', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  // 最後の行以外に削除ボタンを表示
+                  if (_ingredientControllers.length > 1)
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: () {
+                        setState(() {
+                          _ingredientControllers[index].dispose();
+                          _ingredientControllers.removeAt(index);
+                        });
+                      },
+                    )
+                  else
+                    const SizedBox(width: 48), // 削除ボタン分のスペースを確保
+                ],
+              ),
+            );
+          },
+        ),
+        // 「材料を追加」ボタン
+        TextButton.icon(
+          icon: const Icon(Icons.add),
+          label: const Text('材料を追加'),
+          onPressed: () {
+            setState(() {
+              _ingredientControllers.add(IngredientController());
+            });
+          },
+        ),
+        const SizedBox(height: 16),
+        _buildSectionTitle('作り方など'),
+        TextFormField(
+          controller: _processController,
+          decoration: const InputDecoration(labelText: '調理工程 (任意)', border: OutlineInputBorder(), alignLabelWithHint: true),
+          maxLines: 10,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _impressionController,
+          decoration: const InputDecoration(labelText: '感想 (任意)', border: OutlineInputBorder(), alignLabelWithHint: true),
+          maxLines: 3,
+        ),
+      ],
+    );
+  }
+
+  // タックルコンテスト用のフォーム
+  Widget _buildTackleContestForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSectionTitle('タックル情報'),
+        TextFormField(
+          controller: _tackleRodController,
+          decoration: const InputDecoration(labelText: 'ロッド *', border: OutlineInputBorder()),
+           validator: (value) => (value == null || value.isEmpty) ? '必須項目です' : null,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _tackleReelController,
+          decoration: const InputDecoration(labelText: 'リール *', border: OutlineInputBorder()),
+           validator: (value) => (value == null || value.isEmpty) ? '必須項目です' : null,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _tackleLureController,
+          decoration: const InputDecoration(labelText: 'ルアー *', border: OutlineInputBorder()),
+           validator: (value) => (value == null || value.isEmpty) ? '必須項目です' : null,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _tackleLineController,
+          decoration: const InputDecoration(labelText: 'ライン *', border: OutlineInputBorder()),
+           validator: (value) => (value == null || value.isEmpty) ? '必須項目です' : null,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _appealPointController,
+          decoration: const InputDecoration(labelText: 'アピールポイント *', border: OutlineInputBorder(), alignLabelWithHint: true),
+          maxLines: 5,
+           validator: (value) => (value == null || value.isEmpty) ? '必須項目です' : null,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final maxImages = widget.tournament.rule.maxImageCount;
+    final metric = widget.tournament.rule.metric;
     final imageSectionTitle = '必須：釣果の写真 ($maxImages枚まで)';
+    final bool useCamera = metric == 'SIZE' || metric == 'COUNT';
 
     return Scaffold(
       appBar: AppBar(title: Text('${widget.tournament.name} へ提出')),
@@ -164,7 +414,7 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
                     if (index == _imageBytesList.length) {
                       return _imageBytesList.length < maxImages
                           ? GestureDetector(
-                              onTap: _takePicture,
+                              onTap: _pickImages,
                               child: Container(
                                 width: 100,
                                 height: 100,
@@ -173,11 +423,17 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
                                   color: Colors.grey.shade200,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Column(
+                                child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.camera_alt, color: Colors.grey),
-                                    Text('撮影する', style: TextStyle(fontSize: 12)),
+                                    Icon(
+                                      useCamera ? Icons.camera_alt : Icons.photo_library,
+                                      color: Colors.grey,
+                                    ),
+                                    Text(
+                                      useCamera ? '撮影する' : '選択する',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -229,69 +485,18 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
                 ),
               ),
               const SizedBox(height: 24),
-              _buildSectionTitle('必須項目'),
-              DropdownButtonFormField<String>(
-                value: _selectedSquidType,
-                decoration: const InputDecoration(labelText: 'イカの種類 *', border: OutlineInputBorder()),
-                items: ['アオリイカ', 'コウイカ', 'ヤリイカ', 'スルメイカ', 'ヒイカ', 'モンゴウイカ']
-                    .map((String value) => DropdownMenuItem<String>(value: value, child: Text(value)))
-                    .toList(),
-                onChanged: (String? newValue) => setState(() => _selectedSquidType = newValue),
-                validator: (value) => value == null ? '必須項目です' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _egiNameController,
-                decoration: const InputDecoration(labelText: 'エギ・ルアー名 *', border: OutlineInputBorder()),
-                validator: (value) => value!.isEmpty ? '必須項目です' : null,
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedWeather,
-                decoration: const InputDecoration(labelText: '天気 *', border: OutlineInputBorder()),
-                items: ['晴れ', '快晴', '曇り', '雨']
-                    .map((String value) => DropdownMenuItem<String>(value: value, child: Text(value)))
-                    .toList(),
-                onChanged: (String? newValue) => setState(() => _selectedWeather = newValue),
-                validator: (value) => value == null ? '必須項目です' : null,
-              ),
-              const SizedBox(height: 24),
-              _buildSectionTitle('任意項目'),
-              TextFormField(
-                controller: _weightController,
-                decoration: const InputDecoration(labelText: '重さ (g)', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 16),
-              _buildTemperatureSlider('気温', _airTemperature, -10, 40, (v) => setState(() => _airTemperature = v)),
-              const SizedBox(height: 16),
-              _buildTemperatureSlider('水温', _waterTemperature, 0, 35, (v) => setState(() => _waterTemperature = v)),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _egiMakerController,
-                decoration: const InputDecoration(labelText: 'エギ・ルアーメーカー', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _tackleRodController,
-                decoration: const InputDecoration(labelText: 'ロッド', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _tackleReelController,
-                decoration: const InputDecoration(labelText: 'リール', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _tackleLineController,
-                decoration: const InputDecoration(labelText: 'ライン', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _commentController,
-                decoration: const InputDecoration(labelText: 'ひとこと', border: OutlineInputBorder()),
-                maxLines: 3,
-              ),
+              // --- 大会の種類に応じて表示するフォームを切り替え ---
+              if (metric == 'SIZE' || metric == 'COUNT')
+                _buildMainTournamentForm()
+              else if (metric == 'LIKE_COUNT')
+                if (widget.tournament.name.contains("料理"))
+                  _buildCookingContestForm()
+                else if (widget.tournament.name.contains("タックル"))
+                  _buildTackleContestForm()
+                else
+                  const Text('この大会用のフォームが定義されていません。')
+              else
+                const Text('この大会用のフォームが定義されていません。'),
             ],
           ),
         ),
@@ -331,5 +536,19 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
         ),
       ],
     );
+  }
+}
+
+class IngredientController {
+  final TextEditingController nameController;
+  final TextEditingController quantityController;
+
+  IngredientController({String name = '', String quantity = ''})
+      : nameController = TextEditingController(),
+        quantityController = TextEditingController();
+
+  void dispose() {
+    nameController.dispose();
+    quantityController.dispose();
   }
 }

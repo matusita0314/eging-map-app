@@ -1,7 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 
-// ▼▼▼【変更】大きさを変えられるように修正 ▼▼▼
 class _Bubble extends StatelessWidget {
   final double size;
   const _Bubble({required this.size});

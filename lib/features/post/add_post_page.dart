@@ -187,11 +187,29 @@ class _AddPostPageState extends State<AddPostPage> {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.memory(_imageBytesList[index], fit: BoxFit.cover),
+                          // GestureDetectorを追加
+                          GestureDetector(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => Dialog(
+                                  backgroundColor: Colors.transparent,
+                                  insetPadding: const EdgeInsets.all(10),
+                                  child: InteractiveViewer(
+                                    child: Image.memory(
+                                      _imageBytesList[index],
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.memory(_imageBytesList[index], fit: BoxFit.cover, width: 100, height: 100),
+                              ),
                             ),
                           ),
                           Positioned(
