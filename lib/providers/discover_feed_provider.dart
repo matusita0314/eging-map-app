@@ -5,6 +5,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:algolia_helper_flutter/algolia_helper_flutter.dart';
 import '../models/post_model.dart';
 import 'discover_filter_provider.dart';
+import '../models/sort_by.dart';
 
 part 'discover_feed_provider.g.dart';
 
@@ -87,6 +88,18 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
       }
     }
     final postsFromAlgolia = allPosts.values.toList();
+
+    postsFromAlgolia.sort((a, b) {
+      switch (filter.sortBy) {
+        case SortBy.likeCount:
+          return b.likeCount.compareTo(a.likeCount);
+        case SortBy.squidSize:
+          return b.squidSize.compareTo(a.squidSize);
+        case SortBy.createdAt:
+        default:
+          return b.createdAt.compareTo(a.createdAt);
+      }
+    });
     
     final totalHits = responses.fold<int>(0, (sum, res) => sum + res.nbHits);
 
@@ -98,17 +111,17 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
   }
 
   Future<void> fetchNextPage() async {
-    // ▼▼▼【修正点②】ガード条件にフラグを追加 ▼▼▼
     if (state.isLoading || state.isReloading || _isFetchingNextPage || _noMorePostsToFetch) {
       return;
     }
     
-    // ▼▼▼【修正点③】処理全体を try...finally で囲み、フラグを管理 ▼▼▼
     try {
       _isFetchingNextPage = true; // 読み込み開始
 
       final currentState = state.value;
       if (currentState == null) return;
+
+      final filter = ref.read(discoverFilterNotifierProvider);
 
       final List<Future<SearchResponse>> nextFutures = [];
       final List<SearchCombination> activeCombos = [];
@@ -140,6 +153,18 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
       }
 
       final updatedPosts = allPosts.values.toList();
+
+      updatedPosts.sort((a, b) {
+        switch (filter.sortBy) {
+          case SortBy.likeCount:
+            return b.likeCount.compareTo(a.likeCount);
+          case SortBy.squidSize:
+            return b.squidSize.compareTo(a.squidSize);
+          case SortBy.createdAt:
+          default:
+            return b.createdAt.compareTo(a.createdAt);
+        }
+      });
 
       state = AsyncData(DiscoverFeedState(
           posts: updatedPosts,
