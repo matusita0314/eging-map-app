@@ -6,7 +6,6 @@ import 'mission_detail_page.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../models/challenge_model.dart';
 
-// --- メインのUI ---
 class ChallengePage extends StatefulWidget {
   const ChallengePage({super.key});
 
@@ -35,7 +34,7 @@ class _ChallengePageState extends State<ChallengePage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CommonAppBar(
-        title: const Text('チャレンジミッション'),
+        title: const Text('チャレンジ'),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),

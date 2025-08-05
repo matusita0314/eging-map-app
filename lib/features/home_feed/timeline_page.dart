@@ -309,7 +309,7 @@ class _FilterHeader extends ConsumerWidget {
     ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0), // 上のPaddingを削除
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: Column(
         children: [
           Container(

@@ -10,7 +10,7 @@ import '../models/post_model.dart';
 import '../providers/following_provider.dart';
 import '../providers/likes_provider.dart';
 import '../providers/saves_provider.dart';
-import '../providers/post_provider.dart'; // post_providerをインポート
+import '../providers/post_provider.dart';
 
 class PostFeedCard extends ConsumerWidget {
   final Post post;
@@ -18,7 +18,6 @@ class PostFeedCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // ▼▼▼【修正】postStreamProviderを監視してリアルタイムの投稿データを取得 ▼▼▼
     final postAsyncValue = ref.watch(postStreamProvider(post.id));
 
     // データがまだ読み込めていない場合は、シンプルなコンテナを表示
@@ -35,7 +34,6 @@ class PostFeedCard extends ConsumerWidget {
       );
     }
 
-    // リアルタイムの投稿データを取得
     final realTimePost = postAsyncValue.value!;
 
     final pageController = PageController(viewportFraction: 0.95);
@@ -201,7 +199,6 @@ class PostFeedCard extends ConsumerWidget {
                         icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? Colors.red : Colors.grey.shade700),
                         onPressed: () => ref.read(likedPostsNotifierProvider.notifier).handleLike(realTimePost.id),
                       ),
-                      // ▼▼▼【修正】リアルタイムのいいね数を表示 ▼▼▼
                       Text('${realTimePost.likeCount}'),
                     ],
                   ),
@@ -212,7 +209,6 @@ class PostFeedCard extends ConsumerWidget {
                         icon: Icon(Icons.chat_bubble_outline, color: Colors.grey.shade700),
                         onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => PostDetailPage(post: realTimePost, scrollToComments: true))),
                       ),
-                      // ▼▼▼【修正】リアルタイムのコメント数を表示 ▼▼▼
                       Text('${realTimePost.commentCount}'),
                     ],
                   ),

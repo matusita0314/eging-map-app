@@ -706,10 +706,8 @@ class _TournamentFeedCard extends ConsumerWidget {
     final dynamic imageUrlsData = postData['imageUrls'] ?? postData['imageUrl'];
     List<String> imageUrls = List<String>.from(imageUrlsData);
     if (imageUrlsData is List) {
-      // 新しいデータ形式 (List<dynamic>) の場合
       imageUrls = List<String>.from(imageUrlsData.map((e) => e.toString()));
     } else if (imageUrlsData is String) {
-      // 古いデータ形式 (String) の場合
       imageUrls = [imageUrlsData];
     }
 

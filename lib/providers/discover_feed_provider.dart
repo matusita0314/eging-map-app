@@ -65,7 +65,6 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
     }
 
     final searchFutures = searchCombinations.map((combo) {
-      // ▼▼▼【修正】選択された並び替え順を反映させる ▼▼▼
       final searcher = _createSearcher(filter.sortBy.value);
       _searchers[combo] = searcher;
       _applyFiltersToSearcher(searcher, filter, combo, 0);
@@ -87,8 +86,6 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
         allPosts[post.id] = post;
       }
     }
-    // ▼▼▼【修正】クライアント側の強制ソートを削除 ▼▼▼
-    // Algoliaからの順序を信頼するため、ここでのソートは行わない
     final postsFromAlgolia = allPosts.values.toList();
     
     final totalHits = responses.fold<int>(0, (sum, res) => sum + res.nbHits);
@@ -135,7 +132,6 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
       _hasMorePageMap[combo] = response.page < response.nbPages - 1;
     }
 
-    // ▼▼▼【修正】クライアント側の強制ソートを削除 ▼▼▼
     final updatedPosts = allPosts.values.toList();
 
     state = AsyncData(DiscoverFeedState(
@@ -207,10 +203,8 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
   }
 
   HitsSearcher _createSearcher(String sortByValue) {
-    // ▼▼▼【修正】posts_ をプレフィックスとして追加 ▼▼▼
     final indexName = sortByValue.startsWith('posts_') ? sortByValue : 'posts_$sortByValue';
 
-    // Algoliaのインデックス名を動的に変更
     return HitsSearcher(
       applicationID: 'H43CZ7GND1',
       apiKey: '7d86d0716d7f8d84984e54f95f7b4dfa',

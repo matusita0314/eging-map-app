@@ -91,8 +91,6 @@ class MyPage extends ConsumerWidget {
     );
   }
 
-  // ▼▼▼【ここから下を修正】すべてのヘルパーメソッドをMyPageクラスの内側に移動 ▼▼▼
-
   Widget _buildProfileArea(
     BuildContext context,
     WidgetRef ref,
@@ -134,6 +132,7 @@ class MyPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
                           displayName,
@@ -143,6 +142,11 @@ class MyPage extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
+                        // ランクバッジを表示
+                        _buildRankBadge(rank),
+                        
+                        const Spacer(),
+
                         if (!isCurrentUser && followsYou)
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -264,7 +268,6 @@ class MyPage extends ConsumerWidget {
           ),
           itemCount: posts.length,
           itemBuilder: (context, index) {
-            // ★★★ PostFeedCardではなく、PostGridCardを返す ★★★
             return PostGridCard(post: posts[index]);
           },
         );
@@ -306,7 +309,6 @@ class MyPage extends ConsumerWidget {
     }
   }
 
-  // (中身は変更なし)
   Widget _buildRankBadge(String rank) {
     Color badgeColor;
     String badgeText;
@@ -371,7 +373,6 @@ class MyPage extends ConsumerWidget {
     );
   }
 
-  // (中身は変更なし)
   Widget _buildTappableStatItem(
     BuildContext context,
     String label,
@@ -400,7 +401,6 @@ class MyPage extends ConsumerWidget {
     );
   }
 
-  // (中身は変更なし)
   Widget _buildStatItem(String label, String value) {
     return Column(
       children: [
@@ -414,7 +414,6 @@ class MyPage extends ConsumerWidget {
     );
   }
 
-  // (中身は変更なし)
   Widget _buildBadgeSection() {
     return const Padding(
       padding: EdgeInsets.all(16.0),
@@ -432,7 +431,6 @@ class MyPage extends ConsumerWidget {
     );
   }
 
-  // (中身は変更なし)
   Widget _buildChartSection(Map<String, int> data) {
     if (data.isEmpty) return const SizedBox.shrink();
     final sortedEntries = data.entries.toList()
@@ -504,7 +502,6 @@ class MyPage extends ConsumerWidget {
     );
   }
 
-  // (中身は変更なし)
   Map<String, int> _createMonthlyChartData(List<Post> posts) {
     final Map<String, int> data = {};
     for (var post in posts) {

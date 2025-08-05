@@ -40,14 +40,16 @@ class Tournament {
   final String name;
   final String bannerUrl;
   final DateTime endDate;
-  final TournamentRule rule; // ★【変更】ruleオブジェクトを追加
+  final TournamentRule rule;
+  final String? eligibleRank;
 
   Tournament({
     required this.id,
     required this.name,
     required this.bannerUrl,
     required this.endDate,
-    required this.rule, // ★【変更】
+    required this.rule,
+    this.eligibleRank,
   });
 
   factory Tournament.fromFirestore(DocumentSnapshot doc) {
@@ -57,8 +59,8 @@ class Tournament {
       name: data['name'] ?? '無題の大会',
       bannerUrl: data['bannerUrl'] ?? '',
       endDate: (data['endDate'] as Timestamp).toDate(),
-      // ★【変更】マップからRuleオブジェクトを生成
       rule: TournamentRule.fromMap(data['rule'] ?? {}),
+      eligibleRank: data['eligibleRank'],
     );
   }
 }
