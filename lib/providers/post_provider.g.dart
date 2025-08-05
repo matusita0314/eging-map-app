@@ -143,7 +143,7 @@ class _PostStreamProviderElement extends AutoDisposeStreamProviderElement<Post>
   String get postId => (origin as PostStreamProvider).postId;
 }
 
-String _$userPostsHash() => r'6d8b617c764e3e4aa533f857c70dfe0ea245fb1f';
+String _$userPostsHash() => r'3ec5beb6383bc3dbd7096157326b33ba752be595';
 
 /// See also [userPosts].
 @ProviderFor(userPosts)
@@ -155,13 +155,13 @@ class UserPostsFamily extends Family<AsyncValue<List<Post>>> {
   const UserPostsFamily();
 
   /// See also [userPosts].
-  UserPostsProvider call(String userId) {
-    return UserPostsProvider(userId);
+  UserPostsProvider call({required String userId, required SortBy sortBy}) {
+    return UserPostsProvider(userId: userId, sortBy: sortBy);
   }
 
   @override
   UserPostsProvider getProviderOverride(covariant UserPostsProvider provider) {
-    return call(provider.userId);
+    return call(userId: provider.userId, sortBy: provider.sortBy);
   }
 
   static const Iterable<ProviderOrFamily>? _dependencies = null;
@@ -182,9 +182,9 @@ class UserPostsFamily extends Family<AsyncValue<List<Post>>> {
 /// See also [userPosts].
 class UserPostsProvider extends StreamProvider<List<Post>> {
   /// See also [userPosts].
-  UserPostsProvider(String userId)
+  UserPostsProvider({required String userId, required SortBy sortBy})
     : this._internal(
-        (ref) => userPosts(ref as UserPostsRef, userId),
+        (ref) => userPosts(ref as UserPostsRef, userId: userId, sortBy: sortBy),
         from: userPostsProvider,
         name: r'userPostsProvider',
         debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -193,6 +193,7 @@ class UserPostsProvider extends StreamProvider<List<Post>> {
         dependencies: UserPostsFamily._dependencies,
         allTransitiveDependencies: UserPostsFamily._allTransitiveDependencies,
         userId: userId,
+        sortBy: sortBy,
       );
 
   UserPostsProvider._internal(
@@ -203,9 +204,11 @@ class UserPostsProvider extends StreamProvider<List<Post>> {
     required super.debugGetCreateSourceHash,
     required super.from,
     required this.userId,
+    required this.sortBy,
   }) : super.internal();
 
   final String userId;
+  final SortBy sortBy;
 
   @override
   Override overrideWith(
@@ -221,6 +224,7 @@ class UserPostsProvider extends StreamProvider<List<Post>> {
         allTransitiveDependencies: null,
         debugGetCreateSourceHash: null,
         userId: userId,
+        sortBy: sortBy,
       ),
     );
   }
@@ -232,13 +236,16 @@ class UserPostsProvider extends StreamProvider<List<Post>> {
 
   @override
   bool operator ==(Object other) {
-    return other is UserPostsProvider && other.userId == userId;
+    return other is UserPostsProvider &&
+        other.userId == userId &&
+        other.sortBy == sortBy;
   }
 
   @override
   int get hashCode {
     var hash = _SystemHash.combine(0, runtimeType.hashCode);
     hash = _SystemHash.combine(hash, userId.hashCode);
+    hash = _SystemHash.combine(hash, sortBy.hashCode);
 
     return _SystemHash.finish(hash);
   }
@@ -249,6 +256,9 @@ class UserPostsProvider extends StreamProvider<List<Post>> {
 mixin UserPostsRef on StreamProviderRef<List<Post>> {
   /// The parameter `userId` of this provider.
   String get userId;
+
+  /// The parameter `sortBy` of this provider.
+  SortBy get sortBy;
 }
 
 class _UserPostsProviderElement extends StreamProviderElement<List<Post>>
@@ -257,6 +267,8 @@ class _UserPostsProviderElement extends StreamProviderElement<List<Post>>
 
   @override
   String get userId => (origin as UserPostsProvider).userId;
+  @override
+  SortBy get sortBy => (origin as UserPostsProvider).sortBy;
 }
 
 // ignore_for_file: type=lint

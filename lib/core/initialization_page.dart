@@ -10,7 +10,6 @@ import '../features/onboarding/onboarding_page.dart';
 
 import 'fcm_service.dart';
 import 'firebase_options.dart';
-import 'launch_page.dart';
 import '../widgets/squid_loading_indicator.dart';
 import 'navigator_key.dart';
 import '../models/post_model.dart';
@@ -62,12 +61,9 @@ class _InitializationPageState extends State<InitializationPage> {
 
     // 3. 判定結果に応じて次に表示するページを決定
     final Widget destination = hasSeenOnboarding
-        ? const AuthWrapper()      // 2回目以降
-        : const OnboardingPage();  // 初回起動
+        ? const AuthWrapper()     
+        : const OnboardingPage();
 
-    // ▲▲▲【追加ここまで】▲▲▲
-
-    // すべての準備が完了したら、決定したページへ遷移
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => destination), // 行き先を動的に変更
@@ -87,6 +83,7 @@ class _InitializationPageState extends State<InitializationPage> {
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;
+      
       if (notification != null) {
         localNotifications.show(
           notification.hashCode,
@@ -106,35 +103,39 @@ class _InitializationPageState extends State<InitializationPage> {
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
-       final String? postId = message.data['postId'];
       final String? type = message.data['type'];
-      final String? fromUserId = message.data['fromUserId'];
-
-      // navigatorKey を使って画面遷移
       final navigator = navigatorKey.currentState;
       if (navigator == null) return;
 
-      if (type == 'follow') {
+      if (type == 'dm') {
+        final chatRoomId = message.data['chatRoomId'];
+        final chatRoomDoc = await FirebaseFirestore.instance.collection('chat_rooms').doc(chatRoomId).get();
+        if (chatRoomDoc.exists) {
+            final chatRoomData = chatRoomDoc.data()!;
+            final isGroup = (chatRoomData['type'] ?? 'dm') == 'group';
+            final chatTitle = isGroup ? (chatRoomData['groupName'] ?? 'グループ') : (message.data['fromUserName'] ?? 'トーク');
+            
+            navigator.push(MaterialPageRoute(
+              builder: (_) => TalkPage(
+                chatRoomId: chatRoomId,
+                chatTitle: chatTitle,
+                isGroupChat: isGroup,
+              ),
+            ));
+        }
+      } else if (type == 'follow') {
+        final fromUserId = message.data['fromUserId'];
         if (fromUserId != null) {
           navigator.push(MaterialPageRoute(builder: (_) => MyPage(userId: fromUserId)));
         }
-      } else if (type == 'dm') {
-        final chatRoomId = message.data['chatRoomId'];
-        final otherUserName = message.data['fromUserName'];
-        if (chatRoomId != null && otherUserName != null) {
-          navigator.push(MaterialPageRoute(
-            builder: (_) => TalkPage(
-              chatRoomId: chatRoomId,
-              chatTitle: otherUserName,
-              isGroupChat: false,
-            ),
-          ));
-        }
-      } else if (postId != null && postId.isNotEmpty) {
-        final postDoc = await FirebaseFirestore.instance.collection('posts').doc(postId).get();
-        if (postDoc.exists) {
-          final post = Post.fromFirestore(postDoc);
-          navigator.push(MaterialPageRoute(builder: (_) => PostDetailPage(post: post)));
+      } else if (['likes', 'comments', 'saves'].contains(type)) {
+        final postId = message.data['postId'];
+        if (postId != null && postId.isNotEmpty) {
+          final postDoc = await FirebaseFirestore.instance.collection('posts').doc(postId).get();
+          if (postDoc.exists) {
+            final post = Post.fromFirestore(postDoc);
+            navigator.push(MaterialPageRoute(builder: (_) => PostDetailPage(post: post)));
+          }
         }
       }
     });

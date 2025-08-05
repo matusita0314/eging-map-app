@@ -5,14 +5,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-
+import '../../widgets/post_feed_card.dart';
+import '../../models/sort_by.dart';
+import 'account.dart';
 import '../../models/post_model.dart';
-import '../../widgets/post_grid_card.dart';
 import '../../widgets/common_app_bar.dart';
 
 part 'saved_posts_page.g.dart'; // build_runnerで自動生成
 
-// ▼▼▼ 【追加】 保存した投稿リストを取得するProviderを作成 ▼▼▼
+final savedPostsSortByProvider = StateProvider<SortBy>((ref) => SortBy.createdAt);
+
 @riverpod
 Stream<List<Post>> savedPosts(SavedPostsRef ref, String userId) {
   final _currentUser = FirebaseAuth.instance.currentUser;
@@ -27,36 +29,40 @@ Stream<List<Post>> savedPosts(SavedPostsRef ref, String userId) {
       .doc(userId)
       .collection('saved_posts')
       .snapshots();
+  
+  final sortBy = ref.watch(savedPostsSortByProvider);
 
-  // 2. IDリストが変更されるたびに、そのIDに紐づく投稿データを取得し直す
-  return savedPostIdsStream.asyncMap((snapshot) {
+  return savedPostIdsStream.asyncMap((snapshot) async {
     final savedPostIds = snapshot.docs.map((doc) => doc.id).toList();
-    if (savedPostIds.isEmpty) {
-      return [];
-    }
-    // whereInクエリで、保存した投稿のデータだけをまとめて取得
-    return FirebaseFirestore.instance
+    if (savedPostIds.isEmpty) return [];
+
+    final postSnapshot = await FirebaseFirestore.instance
         .collection('posts')
         .where(FieldPath.documentId, whereIn: savedPostIds)
-        .get()
-        .then((postSnapshot) => postSnapshot.docs
-            .map((doc) => Post.fromFirestore(doc))
-            .toList());
+        .get();
+        
+    final posts = postSnapshot.docs.map((doc) => Post.fromFirestore(doc)).toList();
+
+    posts.sort((a, b) {
+      switch (sortBy) {
+        case SortBy.createdAt:
+          return b.createdAt.compareTo(a.createdAt);
+        case SortBy.likeCount:
+          return b.likeCount.compareTo(a.likeCount);
+        case SortBy.squidSize:
+          return b.squidSize.compareTo(a.squidSize);
+      }
+    });
+    return posts;
   });
 }
 
-
-// ▼▼▼ 【変更点】 StatefulWidget を ConsumerWidget に変更 ▼▼▼
 class SavedPostsPage extends ConsumerWidget {
   final String userId;
   const SavedPostsPage({super.key, required this.userId});
 
-  // ▼▼▼ 【変更点】 Stateクラスは丸ごと不要になります ▼▼▼
-  // _fetchRelatedDataなどの複雑なロジックはすべてProviderに移動しました。
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 作成したProviderを監視(watch)する
     final savedPostsAsyncValue = ref.watch(savedPostsProvider(userId));
 
     return Scaffold(
@@ -69,22 +75,24 @@ class SavedPostsPage extends ConsumerWidget {
             return const Center(child: Text('保存した投稿がありません。'));
           }
 
-          return GridView.builder(
-            padding: const EdgeInsets.all(8.0),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-              childAspectRatio: 0.75, // PostGridCardの比率に合わせる
-            ),
-            itemCount: posts.length,
-            itemBuilder: (context, index) {
-              final post = posts[index];
-              // ▼▼▼ 【重要】 エラーが出ていた引数を削除し、postだけを渡す ▼▼▼
-              return PostGridCard(
-                post: post,
-              );
-            },
+          return Column(
+            children: [
+              SortHeader(sortByProvider: savedPostsSortByProvider),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  itemCount: posts.length,
+                  itemBuilder: (context, index) {
+                    // ▼▼▼ PostFeedCardに変更 (ユーザー情報は表示する) ▼▼▼
+                    return PostFeedCard(
+                      post: posts[index],
+                      showAuthorInfo: true,
+                    );
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),

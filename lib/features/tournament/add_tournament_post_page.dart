@@ -191,6 +191,7 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
+        Navigator.of(context).pop(); 
       }
     } catch (e) {
       if (mounted) {

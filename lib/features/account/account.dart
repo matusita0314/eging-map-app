@@ -6,9 +6,10 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../widgets/post_feed_card.dart';
+import '../../models/sort_by.dart';
 
 import '../../models/post_model.dart';
-import '../../widgets/post_grid_card.dart';
 import '../../widgets/common_app_bar.dart';
 import 'edit_profile_page.dart';
 import 'follower_list_page.dart';
@@ -19,6 +20,9 @@ import '../../providers/post_provider.dart';
 import '../../providers/following_provider.dart';
 import '../../providers/followers_provider.dart';
 part 'account.g.dart';
+
+final myPageSortByProvider = StateProvider<SortBy>((ref) => SortBy.createdAt);
+
 
 @riverpod
 Stream<DocumentSnapshot> userDocStream(UserDocStreamRef ref, String userId) {
@@ -35,7 +39,8 @@ class MyPage extends ConsumerWidget {
     final isCurrentUserProfile = currentUser.uid == userId;
 
     final userDocAsyncValue = ref.watch(userDocStreamProvider(userId));
-    final userPostsAsyncValue = ref.watch(userPostsProvider(userId));
+    final sortBy = ref.watch(myPageSortByProvider); 
+    final userPostsAsyncValue = ref.watch(userPostsProvider(userId: userId, sortBy: sortBy));
 
     return Scaffold(
       appBar: CommonAppBar(
@@ -82,7 +87,9 @@ class MyPage extends ConsumerWidget {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
-                _buildUserPostsGrid(ref, userPostsAsyncValue),
+                SortHeader(sortByProvider: myPageSortByProvider),
+                const Divider(height: 1),
+                _buildUserPostsList(ref, userPostsAsyncValue),
               ],
             ),
           );
@@ -128,55 +135,59 @@ class MyPage extends ConsumerWidget {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // ランクバッジを表示
-                        _buildRankBadge(rank),
-                        
-                        const Spacer(),
-
-                        if (!isCurrentUser && followsYou)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color.fromARGB(255, 255, 104, 104),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'フォローされています',
-                              style: TextStyle(
-                                color: const Color.fromARGB(255, 255, 255, 255),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      introduction,
-                      style: const TextStyle(fontSize: 16, height: 1.4),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                _buildRankBadge(rank),
+              ],
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),  // 間隔を調整
+      if (!isCurrentUser && followsYou)
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 3,
+          ),
+          decoration: BoxDecoration(
+            color: const Color.fromARGB(255, 255, 104, 104),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Text(
+            'フォローされています',
+            style: TextStyle(
+              color: Color.fromARGB(255, 255, 255, 255),
+              fontSize: 12,
+            ),
+          ),
+        ),
+      const SizedBox(height: 8),  // 自己紹介との間隔を調整
+      Text(
+        introduction,
+        style: const TextStyle(fontSize: 16, height: 1.4),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ],
+  ),
+),
             ],
           ),
           const SizedBox(height: 16),
@@ -206,11 +217,26 @@ class MyPage extends ConsumerWidget {
                       Expanded(
                         child: ElevatedButton.icon(
                           icon: const Icon(Icons.chat_bubble_outline),
-                          label: const Text('チャット'),
+                          label: const Text.rich(
+                            TextSpan(
+                              text: 'チャット',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
                           onPressed: () => _startChat(context, userDoc),
                           style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,  // 背景色を白に
+                            foregroundColor: Colors.blue,   // テキストとアイコンの色を青に
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(15),
+                              side: BorderSide(
+                                color: Colors.blue.withOpacity(0.5),
+                                width: 1,
+                              ),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 9,
                             ),
                           ),
                         ),
@@ -230,12 +256,26 @@ class MyPage extends ConsumerWidget {
                             foregroundColor: isFollowing
                                 ? Colors.blue
                                 : Colors.white,
-                            side: const BorderSide(color: Colors.blue),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(15),
+                              side: BorderSide(
+                                color: Colors.blue.withOpacity(0.5),
+                              ),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 9,
+                            ),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            minimumSize: const Size(0, 30),
+                          ),
+                          child: Text(
+                            isFollowing ? 'フォロー中' : '+ フォロー',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          child: Text(isFollowing ? 'フォロー中' : 'フォロー'),
                         ),
                       ),
                     ],
@@ -248,7 +288,8 @@ class MyPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildUserPostsGrid(WidgetRef ref, AsyncValue<List<Post>> asyncValue) {
+
+  Widget _buildUserPostsList(WidgetRef ref, AsyncValue<List<Post>> asyncValue) {
     return asyncValue.when(
       loading: () => const Center(child: Padding(padding: EdgeInsets.all(24.0), child: CircularProgressIndicator())),
       error: (err, stack) => Center(child: Text('エラー: $err')),
@@ -256,19 +297,13 @@ class MyPage extends ConsumerWidget {
         if (posts.isEmpty) {
           return const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text('まだ投稿がありません。')));
         }
-        return GridView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 0.75,
-          ),
           itemCount: posts.length,
           itemBuilder: (context, index) {
-            return PostGridCard(post: posts[index]);
+            return PostFeedCard(post: posts[index], showAuthorInfo: true);
           },
         );
       },
@@ -509,5 +544,33 @@ class MyPage extends ConsumerWidget {
       data.update(monthKey, (value) => value + 1, ifAbsent: () => 1);
     }
     return data;
+  }
+}
+
+class SortHeader extends ConsumerWidget {
+  final StateProvider<SortBy> sortByProvider;
+  const SortHeader({required this.sortByProvider});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentSortBy = ref.watch(sortByProvider);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Wrap(
+        spacing: 8.0,
+        alignment: WrapAlignment.center,
+        children: SortBy.values.map((sort) {
+          return ChoiceChip(
+            label: Text(sort.displayName),
+            selected: currentSortBy == sort,
+            onSelected: (isSelected) {
+              if (isSelected) {
+                ref.read(sortByProvider.notifier).state = sort;
+              }
+            },
+          );
+        }).toList(),
+      ),
+    );
   }
 }

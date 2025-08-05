@@ -13,11 +13,11 @@ class _SettingsPageState extends State<SettingsPage> {
   final _currentUser = FirebaseAuth.instance.currentUser;
   bool _isLoading = true;
 
-  // 各通知設定の状態を保持する変数
   bool _likesEnabled = true;
   bool _savesEnabled = true;
   bool _commentsEnabled = true;
   bool _followEnabled = true;
+  bool _dmEnabled = true;
 
   @override
   void initState() {
@@ -45,6 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _savesEnabled = settings['saves'] ?? true;
           _commentsEnabled = settings['comments'] ?? true;
           _followEnabled = settings['follow'] ?? true;
+          _dmEnabled = settings['dm'] ?? true; // ▼▼▼ 2. 設定を読み込む処理を追加 ▼▼▼
         });
       }
     } catch (e) {
@@ -56,7 +57,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // 通知設定を更新する
   Future<void> _updateSetting(String key, bool value) async {
     if (_currentUser == null) return;
     try {
@@ -81,6 +81,15 @@ class _SettingsPageState extends State<SettingsPage> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
+                _buildSwitchTile(
+                  title: '「DM」の通知',
+                  subtitle: '他のユーザーからダイレクトメッセージを受け取ったときに通知を受け取ります。',
+                  value: _dmEnabled,
+                  onChanged: (newValue) {
+                    setState(() => _dmEnabled = newValue);
+                    _updateSetting('dm', newValue);
+                  },
+                ),
                 _buildSwitchTile(
                   title: '「フォロー」の通知',
                   subtitle: '他のユーザーにフォローされたときに通知を受け取ります。',
@@ -122,7 +131,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // SwitchListTileを構築するヘルパーメソッド
   Widget _buildSwitchTile({
     required String title,
     required String subtitle,

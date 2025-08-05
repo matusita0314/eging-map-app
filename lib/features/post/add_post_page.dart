@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:typed_data';
 import 'package:geocoding/geocoding.dart';
+
 class AddPostPage extends StatefulWidget {
   final LatLng location;
 

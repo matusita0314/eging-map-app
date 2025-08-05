@@ -45,7 +45,7 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
   final Map<SearchCombination, HitsSearcher> _searchers = {};
   final _limit = 3;
   final Map<SearchCombination, bool> _hasMorePageMap = {};
-  
+  bool _isFetchingNextPage = false;
   bool get _noMorePostsToFetch => !_hasMorePageMap.containsValue(true);
 
   @override
@@ -98,48 +98,59 @@ class DiscoverFeedNotifier extends _$DiscoverFeedNotifier {
   }
 
   Future<void> fetchNextPage() async {
-    final currentState = state.value;
-    if (state.isLoading || state.isReloading || currentState == null || _noMorePostsToFetch) {
-      return;
-    }
-
-    final List<Future<SearchResponse>> nextFutures = [];
-    final List<SearchCombination> activeCombos = [];
-
-    _searchers.forEach((combo, searcher) {
-      if (_hasMorePageMap[combo] == true) {
-        searcher.applyState((s) => s.copyWith(page: (s.page ?? 0) + 1));
-        nextFutures.add(searcher.responses.first);
-        activeCombos.add(combo);
-      }
-    });
-
-    if (nextFutures.isEmpty) {
-      state = AsyncData(currentState.copyWith(noMorePosts: true));
+    // ▼▼▼【修正点②】ガード条件にフラグを追加 ▼▼▼
+    if (state.isLoading || state.isReloading || _isFetchingNextPage || _noMorePostsToFetch) {
       return;
     }
     
-    final newResponses = await Future.wait(nextFutures);
-    final allPosts = { for (var p in currentState.posts) p.id: p };
+    // ▼▼▼【修正点③】処理全体を try...finally で囲み、フラグを管理 ▼▼▼
+    try {
+      _isFetchingNextPage = true; // 読み込み開始
 
-    for (var i = 0; i < newResponses.length; i++) {
-      final response = newResponses[i];
-      final combo = activeCombos[i];
-      for (final hit in response.hits) {
-        final post = Post.fromAlgolia(hit);
-        allPosts[post.id] = post;
+      final currentState = state.value;
+      if (currentState == null) return;
+
+      final List<Future<SearchResponse>> nextFutures = [];
+      final List<SearchCombination> activeCombos = [];
+
+      _searchers.forEach((combo, searcher) {
+        if (_hasMorePageMap[combo] == true) {
+          searcher.applyState((s) => s.copyWith(page: (s.page ?? 0) + 1));
+          nextFutures.add(searcher.responses.first);
+          activeCombos.add(combo);
+        }
+      });
+
+      if (nextFutures.isEmpty) {
+        state = AsyncData(currentState.copyWith(noMorePosts: true));
+        return;
       }
-      _hasMorePageMap[combo] = response.page < response.nbPages - 1;
+      
+      final newResponses = await Future.wait(nextFutures);
+      final allPosts = { for (var p in currentState.posts) p.id: p };
+
+      for (var i = 0; i < newResponses.length; i++) {
+        final response = newResponses[i];
+        final combo = activeCombos[i];
+        for (final hit in response.hits) {
+          final post = Post.fromAlgolia(hit);
+          allPosts[post.id] = post;
+        }
+        _hasMorePageMap[combo] = response.page < response.nbPages - 1;
+      }
+
+      final updatedPosts = allPosts.values.toList();
+
+      state = AsyncData(DiscoverFeedState(
+          posts: updatedPosts,
+          hitCount: currentState.hitCount,
+          noMorePosts: _noMorePostsToFetch,
+      ));
+    } finally {
+      _isFetchingNextPage = false; // 処理が完了したら必ずフラグを降ろす
     }
-
-    final updatedPosts = allPosts.values.toList();
-
-    state = AsyncData(DiscoverFeedState(
-        posts: updatedPosts,
-        hitCount: currentState.hitCount,
-        noMorePosts: _noMorePostsToFetch,
-    ));
   }
+
 
   List<SearchCombination> _createSearchCombinations(DiscoverFilterState filter) {
     final squidTypesToSearch = filter.squidTypes.isEmpty ? {null} : filter.squidTypes;

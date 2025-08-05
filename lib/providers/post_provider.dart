@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../models/post_model.dart';
+import '../models/sort_by.dart';
 part 'post_provider.g.dart';
 
 // 投稿1件のデータをリアルタイムで監視するProvider
@@ -11,11 +12,12 @@ Stream<Post> postStream(PostStreamRef ref, String postId) {
 }
 
 @Riverpod(keepAlive: true)
-Stream<List<Post>> userPosts(UserPostsRef ref, String userId) {
+Stream<List<Post>> userPosts(UserPostsRef ref, {required String userId, required SortBy sortBy}) {
   return FirebaseFirestore.instance
       .collection('posts')
       .where('userId', isEqualTo: userId)
-      .orderBy('createdAt', descending: true)
+      // ▼▼▼ sortByに応じてFirestoreの並び替え順を動的に変更 ▼▼▼
+      .orderBy(sortBy.value.replaceFirst('_desc', ''), descending: true)
       .snapshots()
       .map(
         (snapshot) =>

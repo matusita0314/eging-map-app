@@ -1,5 +1,3 @@
-// lib/features/post/post_detail_page.dart (完全版)
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +5,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; 
+import '../../providers/likes_provider.dart'; 
+import '../../providers/post_provider.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import '../map/map_page.dart';
 import '../../models/comment_model.dart';
@@ -29,18 +30,16 @@ class PostDetailPage extends StatelessWidget {
   }
 }
 
-class _PostDetailView extends StatefulWidget {
+class _PostDetailView extends ConsumerStatefulWidget {
   final Post post;
   final bool scrollToComments;
   const _PostDetailView({required this.post, required this.scrollToComments});
 
   @override
-  State<_PostDetailView> createState() => _PostDetailViewState();
+  ConsumerState<_PostDetailView> createState() => _PostDetailViewState();
 }
 
-class _PostDetailViewState extends State<_PostDetailView> {
-  bool _isLiked = false;
-  int _likeCount = 0;
+class _PostDetailViewState extends ConsumerState<_PostDetailView> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
   final _commentController = TextEditingController();
   final _scrollController = ScrollController();
@@ -51,8 +50,6 @@ class _PostDetailViewState extends State<_PostDetailView> {
   @override
   void initState() {
     super.initState();
-    _likeCount = widget.post.likeCount;
-    _checkIfLiked();
     _getAddressFromLatLng();
 
     if (widget.scrollToComments) {
@@ -80,18 +77,6 @@ class _PostDetailViewState extends State<_PostDetailView> {
     }
   }
 
-  Future<void> _checkIfLiked() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.post.id)
-        .collection('likes')
-        .doc(_currentUser.uid)
-        .get();
-    if (mounted && doc.exists) {
-      setState(() => _isLiked = true);
-    }
-  }
-
   Future<void> _getAddressFromLatLng() async {
     try {
       List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -111,19 +96,7 @@ class _PostDetailViewState extends State<_PostDetailView> {
   }
 
   Future<void> _handleLike() async {
-    setState(() {
-      _isLiked ? _likeCount-- : _likeCount++;
-      _isLiked = !_isLiked;
-    });
-    final postRef = FirebaseFirestore.instance.collection('posts').doc(widget.post.id);
-    final likeRef = postRef.collection('likes').doc(_currentUser.uid);
-    if (_isLiked) {
-      await likeRef.set({'likedAt': Timestamp.now()});
-      await postRef.update({'likeCount': FieldValue.increment(1)});
-    } else {
-      await likeRef.delete();
-      await postRef.update({'likeCount': FieldValue.increment(-1)});
-    }
+    ref.read(likedPostsNotifierProvider.notifier).handleLike(widget.post.id);
   }
 
   Future<void> _postComment() async {
@@ -194,6 +167,13 @@ class _PostDetailViewState extends State<_PostDetailView> {
   @override
   Widget build(BuildContext context) {
     final isMyPost = widget.post.userId == _currentUser.uid;
+    final postAsyncValue = ref.watch(postStreamProvider(widget.post.id));
+    final isLiked = ref.watch(likedPostsNotifierProvider).value?.contains(widget.post.id) ?? false;
+
+    if (postAsyncValue is! AsyncData<Post>) {
+      return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
+    }
+    final realTimePost = postAsyncValue.value!;
     
     return Scaffold(
       appBar: AppBar(
@@ -294,18 +274,18 @@ class _PostDetailViewState extends State<_PostDetailView> {
                     padding: const EdgeInsets.symmetric(horizontal: 4.0),
                     child: Row(
                       children: [
-                        IconButton(
+                         IconButton(
                           icon: Icon(
-                            _isLiked ? Icons.favorite : Icons.favorite_border,
-                            color: _isLiked ? Colors.red : Colors.grey,
+                            isLiked ? Icons.favorite : Icons.favorite_border,
+                            color: isLiked ? Colors.red : Colors.grey,
                           ),
-                          onPressed: _handleLike,
+                          onPressed: _handleLike, 
                         ),
-                        Text('$_likeCount'),
+                        Text('${realTimePost.likeCount}'),
                         const SizedBox(width: 8),
                         const Icon(Icons.chat_bubble_outline, color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text('${widget.post.commentCount}'),
+                        Text('${realTimePost.commentCount}'),
                       ],
                     ),
                   ),

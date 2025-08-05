@@ -11,6 +11,7 @@ import './tournament_post_detail_page.dart';
 import 'add_tournament_post_page.dart';
 import 'tournament_user_submissions_page.dart';
 import '../account/account.dart';
+import '../../providers/following_provider.dart';
 
 final tournamentSortProvider = StateProvider<String>((ref) => 'createdAt');
 
@@ -83,9 +84,17 @@ class _MyStatusTab extends StatelessWidget {
   final Tournament tournament;
   const _MyStatusTab({required this.tournament});
 
-  Widget _buildLikeStatusCard(Map<String, dynamic> myEntryData) {
-    final score = myEntryData['currentScore'] ?? 0;
+  Widget _buildLikeStatusCard(BuildContext context, Map<String, dynamic> myEntryData) {
+    final currentUser = FirebaseAuth.instance.currentUser!;
     final rank = myEntryData['currentRank'] as int?;
+
+    // ユーザーの承認済み投稿をリアルタイムで監視するStream
+    final userPostsStream = FirebaseFirestore.instance
+        .collection('tournaments').doc(tournament.id)
+        .collection('posts')
+        .where('userId', isEqualTo: currentUser.uid)
+        .where('status', isEqualTo: 'approved')
+        .snapshots();
 
     return Card(
       elevation: 4,
@@ -96,7 +105,6 @@ class _MyStatusTab extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                
                 const Icon(Icons.favorite, color: Colors.pink, size: 36),
                 const SizedBox(width: 12),
                 Container(
@@ -107,21 +115,35 @@ class _MyStatusTab extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-              rank != null ? 'あなたの現在の順位は $rank 位です' : 'あなたの順位は集計中です',
-              style: TextStyle(fontSize: 16,fontWeight: FontWeight.bold,color: Colors.pink.shade800,),
-            ),
+                    rank != null ? 'あなたの現在の順位は $rank 位です' : 'あなたの順位は集計中です',
+                    style: TextStyle(fontSize: 16,fontWeight: FontWeight.bold,color: Colors.pink.shade800,),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            Text(
-                    '合計 $score いいね',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.pink.shade800,
-                    ),
+            StreamBuilder<QuerySnapshot>(
+              stream: userPostsStream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const CircularProgressIndicator();
+                }
+                int totalLikes = 0;
+                for (var doc in snapshot.data!.docs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  totalLikes += (data['likeCount'] as int? ?? 0);
+                }
+                
+                return Text(
+                  '合計 $totalLikes いいね',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.pink.shade800,
                   ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -218,11 +240,8 @@ class _MyStatusTab extends StatelessWidget {
 
               final myEntryData = snapshot.data!.data() as Map<String, dynamic>;
               
-              // final rank = myEntryData['currentRank'] as int?;
-              // final score = myEntryData['currentScore'];
-
               if (tournament.rule.metric == 'LIKE_COUNT') {
-                return _buildLikeStatusCard(myEntryData);
+                return _buildLikeStatusCard(context,myEntryData);
               } else {
                 return _buildRankStatusCard(myEntryData);
               }
@@ -530,7 +549,9 @@ class _RankingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metricUnit = tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
+    final metricUnit = tournament.rule.metric == 'SIZE'
+        ? 'cm'
+        : (tournament.rule.metric == 'COUNT' ? '匹' : 'いいね');
     return ListTile(
       onTap: onTap,
       leading: Text('$rank位', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -706,8 +727,10 @@ class _TournamentFeedCard extends ConsumerWidget {
     final dynamic imageUrlsData = postData['imageUrls'] ?? postData['imageUrl'];
     List<String> imageUrls = List<String>.from(imageUrlsData);
     if (imageUrlsData is List) {
+      // 新しいデータ形式 (List<dynamic>) の場合
       imageUrls = List<String>.from(imageUrlsData.map((e) => e.toString()));
     } else if (imageUrlsData is String) {
+      // 古いデータ形式 (String) の場合
       imageUrls = [imageUrlsData];
     }
 
@@ -741,29 +764,50 @@ class _TournamentFeedCard extends ConsumerWidget {
         children: [
           // --- ユーザー情報ヘッダー ---
           if (showAuthorInfo)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => MyPage(userId: userId))),
-                child: Row(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => MyPage(userId: userId))
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundImage: userPhotoUrl != null && userPhotoUrl.isNotEmpty 
+                          ? CachedNetworkImageProvider(userPhotoUrl) 
+                          : null,
+                        child: (userPhotoUrl == null || userPhotoUrl.isEmpty) 
+                          ? const Icon(Icons.person, size: 20) 
+                          : null,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(userName, 
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                Row(
                   children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundImage: userPhotoUrl != null && userPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(userPhotoUrl) : null,
-                      child: (userPhotoUrl == null || userPhotoUrl.isEmpty) ? const Icon(Icons.person, size: 20) : null,
-                    ),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text(DateFormat('M月d日').format(createdAt), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                      ],
+                    Icon(Icons.schedule, size: 16, color: Color.fromARGB(255, 45, 210, 48)),
+                    const SizedBox(width: 4),
+                    Text(
+                      DateFormat('yyyy年M月d日').format(createdAt),
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
+          ),
           
           // --- 投稿画像 ---
           if (imageUrls.isNotEmpty)
@@ -835,9 +879,8 @@ class _TournamentFeedCard extends ConsumerWidget {
 
           // --- アクションボタン ---
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
               children: [
                 // いいねボタン
                 StreamBuilder<DocumentSnapshot>(
@@ -847,8 +890,12 @@ class _TournamentFeedCard extends ConsumerWidget {
                     return Row(
                       children: [
                         IconButton(
-                          icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? Colors.red : Colors.grey),
-                          onPressed: () => ref.read(likedTournamentPostsNotifierProvider.notifier).handleLike(tournament.id, postId),
+                          icon: Icon(
+                            isLiked ? Icons.favorite : Icons.favorite_border,
+                            color: isLiked ? Colors.red : Colors.grey
+                          ),
+                          onPressed: () => ref.read(likedTournamentPostsNotifierProvider.notifier)
+                            .handleLike(tournament.id, postId),
                         ),
                         Text('$likeCount'),
                       ],
@@ -873,9 +920,58 @@ class _TournamentFeedCard extends ConsumerWidget {
                     Text('$commentCount'),
                   ],
                 ),
+                const SizedBox(width: 100),
+                // フォローボタン
+                if (showAuthorInfo && userId != currentUser.uid)
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(currentUser.uid)
+                        .collection('following')
+                        .doc(userId)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      final isFollowing = snapshot.hasData && snapshot.data!.exists;
+                      return ElevatedButton(
+                        onPressed: () {
+                              ref
+                                  .read(followingNotifierProvider.notifier)
+                                  .handleFollow(userId);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isFollowing
+                                  ? Colors.white
+                                  : Colors.blue,
+                              foregroundColor: isFollowing
+                                  ? Colors.blue
+                                  : Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                                side: BorderSide(
+                                  color: Colors.blue.withOpacity(0.5),
+                                ),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              minimumSize: const Size(0, 30),
+                            ),
+                            child: Text(
+                              isFollowing ? 'フォロー中' : '+ フォロー',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                      );
+                    },
+                  ),
               ],
             ),
-          )
+          ),
+          const SizedBox(height: 5),
         ],
       ),
     );

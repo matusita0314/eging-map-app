@@ -14,7 +14,8 @@ import '../providers/post_provider.dart';
 
 class PostFeedCard extends ConsumerWidget {
   final Post post;
-  const PostFeedCard({super.key, required this.post});
+  final bool showAuthorInfo;
+  const PostFeedCard({super.key, required this.post, this.showAuthorInfo = true});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -58,35 +59,36 @@ class PostFeedCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => MyPage(userId: realTimePost.userId))),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundImage: realTimePost.userPhotoUrl != null && realTimePost.userPhotoUrl!.isNotEmpty
-                                ? CachedNetworkImageProvider(realTimePost.userPhotoUrl!)
-                                : null,
-                            child: realTimePost.userPhotoUrl == null || realTimePost.userPhotoUrl!.isEmpty
-                                ? const Icon(Icons.person, size: 20)
-                                : null,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(realTimePost.userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        ],
+                            if (showAuthorInfo)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => MyPage(userId: realTimePost.userId))),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundImage: realTimePost.userPhotoUrl != null && realTimePost.userPhotoUrl!.isNotEmpty
+                                  ? CachedNetworkImageProvider(realTimePost.userPhotoUrl!)
+                                  : null,
+                              child: realTimePost.userPhotoUrl == null || realTimePost.userPhotoUrl!.isEmpty
+                                  ? const Icon(Icons.person, size: 20)
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(realTimePost.userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          ],
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    _buildHeaderInfo(Icons.location_on, realTimePost.region ?? '不明'),
-                    const SizedBox(width: 20),
-                    _buildHeaderInfo(Icons.schedule, DateFormat('yyyy年M月d日').format(realTimePost.createdAt)),
-                  ],
+                      const Spacer(),
+                      _buildHeaderInfo(Icons.location_on, realTimePost.region ?? '不明'),
+                      const SizedBox(width: 20),
+                      _buildHeaderInfo(Icons.schedule, DateFormat('yyyy年M月d日').format(realTimePost.createdAt)),
+                    ],
+                  ),
                 ),
-              ),
               
               Expanded(
                 child: PageView.builder(
@@ -139,7 +141,7 @@ class PostFeedCard extends ConsumerWidget {
                       children: [
                         Text("🦑 ${realTimePost.squidType ?? '釣果'}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                         const Spacer(),
-                        if (!isMyPost)
+                        if (showAuthorInfo && !isMyPost)
                           ElevatedButton(
                             onPressed: () {
                               ref

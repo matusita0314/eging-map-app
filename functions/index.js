@@ -53,18 +53,21 @@ async function createNotification(recipientId, notificationData) {
   }
   const userData = userSnap.data();
 
-  const settings = userData.notificationSettings || {};
-  const shouldNotify = settings[notificationData.type] !== false;
-
-  if (!shouldNotify) {
-    return console.log(`User ${recipientId} has disabled notifications for type "${notificationData.type}".`);
-  }
-
   await userRef.collection("notifications").add({
     ...notificationData,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     isRead: false,
   });
+  console.log(`In-app notification created for ${recipientId}, type: ${notificationData.type}`);
+
+  // 2. 【条件付きで実行】ユーザーの設定をチェックしてプッシュ通知を送信する
+  const settings = userData.notificationSettings || {};
+  const shouldSendPush = settings[notificationData.type] !== false; // プッシュ通知を送信すべきか
+
+  if (!shouldSendPush) {
+    // ユーザーがプッシュ通知をOFFにしている場合は、ここで処理を終了
+    return console.log(`User ${recipientId} has disabled PUSH notifications for type "${notificationData.type}". Skipping push notification.`);
+  }
 
   const fcmTokens = userData.fcmTokens || [];
   if (fcmTokens.length === 0) {
@@ -420,12 +423,16 @@ exports.createNotificationOnLike = onDocumentCreated({
   if (!likerSnap.exists) return;
   const likerName = likerSnap.data().displayName || "名無しさん";
 
+  const thumbnailUrl = (postData.thumbnailUrls && postData.thumbnailUrls.length > 0)
+  ? postData.thumbnailUrls[0]
+  : ((postData.imageUrls && postData.imageUrls.length > 0) ? postData.imageUrls[0] : "");
+
   return createNotification(postAuthorId, {
     type: "likes",
     fromUserName: likerName,
     fromUserId: likerId,
     postId: postId,
-    postThumbnailUrl: postData.thumbnailUrl || postData.imageUrl,
+    postThumbnailUrl: thumbnailUrl,
   });
 });
 
@@ -448,12 +455,16 @@ exports.createNotificationOnComment = onDocumentCreated({
 
   if (postAuthorId === commenterId) return;
 
+  const thumbnailUrl = (postData.thumbnailUrls && postData.thumbnailUrls.length > 0)
+    ? postData.thumbnailUrls[0]
+    : ((postData.imageUrls && postData.imageUrls.length > 0) ? postData.imageUrls[0] : "");
+
   return createNotification(postAuthorId, {
     type: "comments",
     fromUserName: commentData.userName,
     fromUserId: commenterId,
     postId: postId,
-    postThumbnailUrl: postData.thumbnailUrl || postData.imageUrl,
+    postThumbnailUrl: thumbnailUrl,
     commentText: commentData.text,
   });
 });
@@ -481,12 +492,16 @@ exports.createNotificationOnSave = onDocumentCreated({
   if (!saverSnap.exists) return;
   const saverName = saverSnap.data().displayName || "名無しさん";
 
+  const thumbnailUrl = (postData.thumbnailUrls && postData.thumbnailUrls.length > 0)
+    ? postData.thumbnailUrls[0]
+    : ((postData.imageUrls && postData.imageUrls.length > 0) ? postData.imageUrls[0] : "");
+
   return createNotification(postAuthorId, {
     type: "saves",
     fromUserName: saverName,
     fromUserId: userId,
     postId: postId,
-    postThumbnailUrl: postData.thumbnailUrl || postData.imageUrl,
+    postThumbnailUrl: thumbnailUrl,
   });
 });
 
@@ -522,6 +537,40 @@ exports.createNotificationOnFollow = onDocumentCreated({
     postThumbnailUrl: "", // フォロワーのアイコンを表示しても良い
   });
 });
+
+// =================================================================
+// ▼▼▼ 11. DM受信時に通知を作成する関数 ▼▼▼
+// =================================================================
+exports.createNotificationOnNewMessage = onDocumentCreated({
+  document: "chat_rooms/{chatRoomId}/messages/{messageId}",
+  region: "asia-northeast1",
+}, async (event) => {
+  const chatRoomId = event.params.chatRoomId;
+  const messageData = event.data.data();
+  const senderId = messageData.senderId;
+
+  // チャットルームの情報を取得して、参加メンバーを取得
+  const chatRoomSnap = await db.collection("chat_rooms").doc(chatRoomId).get();
+  if (!chatRoomSnap.exists) return;
+
+  const chatRoomData = chatRoomSnap.data();
+  const userIds = chatRoomData.userIds || [];
+
+  // 送信者以外の全メンバーに通知を送る
+  const recipients = userIds.filter((id) => id !== senderId);
+  
+  for (const recipientId of recipients) {
+    // 汎用通知作成関数を呼び出す
+    await createNotification(recipientId, {
+      type: "dm",
+      fromUserName: messageData.senderName,
+      fromUserId: senderId,
+      chatRoomId: chatRoomId,
+      commentText: messageData.text, // メッセージ本文を通知内容にする
+    });
+  }
+});
+
 // =================================================================
 // ▼▼▼ 12. ユーザー情報をAlgoliaに同期する関数 ▼▼▼
 // =================================================================
