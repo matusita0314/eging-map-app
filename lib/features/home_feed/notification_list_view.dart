@@ -22,15 +22,12 @@ class _NotificationListViewState extends State<NotificationListView> {
   @override
   void initState() {
     super.initState();
-    // 日本語用のTimeagoロケールを初期化
     timeago.setLocaleMessages('ja', timeago.JaMessages());
   }
 
-  // 通知をタップしたときの処理
   Future<void> _onNotificationTapped(NotificationModel notification) async {
     if (_currentUser == null) return;
 
-    // まず通知を既読にする
     FirebaseFirestore.instance
         .collection('users')
         .doc(_currentUser!.uid)
@@ -38,7 +35,6 @@ class _NotificationListViewState extends State<NotificationListView> {
         .doc(notification.id)
         .update({'isRead': true});
 
-    // タップされた通知に関連する投稿データを取得
     if (notification.type == 'follow') {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -61,7 +57,6 @@ class _NotificationListViewState extends State<NotificationListView> {
         );
       }
     } else {
-      // 'likes', 'comments', 'saves'
       if (notification.postId.isNotEmpty) {
         final postDoc = await FirebaseFirestore.instance
             .collection('posts')
@@ -91,7 +86,7 @@ class _NotificationListViewState extends State<NotificationListView> {
           .doc(_currentUser!.uid)
           .collection('notifications')
           .orderBy('createdAt', descending: true)
-          .limit(50) // パフォーマンスのため、最新50件まで表示
+          .limit(50)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -102,15 +97,16 @@ class _NotificationListViewState extends State<NotificationListView> {
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const Center(
-            child: Text('まだお知らせはありません。', style: TextStyle(color: Colors.grey)),
+            child: Text('まだお知らせはありません。', style: TextStyle(color: Colors.white70)),
           );
         }
 
         final notifications = snapshot.data!.docs
             .map((doc) => NotificationModel.fromFirestore(doc))
             .toList();
-
+ 
         return ListView.builder(
+          padding: const EdgeInsets.only(top: 8, bottom: 8),
           itemCount: notifications.length,
           itemBuilder: (context, index) {
             final notification = notifications[index];
@@ -125,94 +121,55 @@ class _NotificationListViewState extends State<NotificationListView> {
   }
 }
 
-// --- 通知一つ分を表示するウィジェット ---
 class _NotificationTile extends StatelessWidget {
   final NotificationModel notification;
   final VoidCallback onTap;
 
   const _NotificationTile({required this.notification, required this.onTap});
 
-  // 通知タイプに応じたアイコンとテキストを返すヘルパーメソッド
   (IconData, TextSpan) _buildNotificationContent() {
     final userNameSpan = TextSpan(
       text: notification.fromUserName,
-      style: const TextStyle(
-        fontWeight: FontWeight.bold,
-        color: Colors.black87,
-      ),
+      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
     );
-    final defaultStyle = TextStyle(color: Colors.grey.shade800, height: 1.4);
+    final defaultStyle = TextStyle(fontSize: 16,color:  Colors.grey.shade800, height: 1.4);
 
     switch (notification.type) {
       case 'follow':
         return (
-          Icons.person_add, // フォロー用のアイコン
-          TextSpan(
-            children: [
-              userNameSpan,
-              const TextSpan(text: 'さんがあなたをフォローしました。'),
-            ],
-            style: defaultStyle,
-          ),
+          Icons.person_add,
+          TextSpan(children: [userNameSpan, const TextSpan(text: 'さんがあなたをフォローしました。')], style: defaultStyle)
         );
       case 'likes':
         return (
           Icons.favorite,
-          TextSpan(
-            children: [
-              userNameSpan,
-              const TextSpan(text: 'さんがあなたの投稿に「いいね」しました。'),
-            ],
-            style: defaultStyle,
-          ),
+          TextSpan(children: [userNameSpan, const TextSpan(text: 'さんがあなたの投稿に「いいね」しました。')], style: defaultStyle)
         );
       case 'saves':
         return (
           Icons.bookmark,
-          TextSpan(
-            children: [
-              userNameSpan,
-              const TextSpan(text: 'さんがあなたの投稿を保存しました。'),
-            ],
-            style: defaultStyle,
-          ),
+          TextSpan(children: [userNameSpan, const TextSpan(text: 'さんがあなたの投稿を保存しました。')], style: defaultStyle)
         );
       case 'comments':
         return (
           Icons.chat_bubble,
-          TextSpan(
-            children: [
-              userNameSpan,
-              const TextSpan(text: 'さんがコメントしました: '),
-              TextSpan(
-                text: '"${notification.commentText ?? ''}"',
-                style: const TextStyle(fontStyle: FontStyle.italic),
-              ),
-            ],
-            style: defaultStyle,
-          ),
+          TextSpan(children: [
+            userNameSpan,
+            const TextSpan(text: 'さんがコメントしました: '),
+            TextSpan(text: '"${notification.commentText ?? ''}"', style: const TextStyle(fontStyle: FontStyle.italic))
+          ], style: defaultStyle)
         );
       case 'dm':
         return (
           Icons.chat,
-          TextSpan(
-            children: [
-              userNameSpan,
-              const TextSpan(text: 'さんからメッセージ: '),
-              TextSpan(
-                text: '"${notification.commentText ?? ''}"',
-                style: const TextStyle(fontStyle: FontStyle.italic),
-              ),
-            ],
-            style: defaultStyle,
-          ),
+          TextSpan(children: [
+            userNameSpan,
+            const TextSpan(text: 'さんからメッセージ: '),
+            TextSpan(text: '"${notification.commentText ?? ''}"', style: const TextStyle(fontStyle: FontStyle.italic))
+          ], style: defaultStyle)
         );
-
       default:
-        return (
-          Icons.notifications,
-          TextSpan(text: '新しいお知らせがあります。', style: defaultStyle),
-        );
+        return (Icons.notifications, TextSpan(text: '新しいお知らせがあります。', style: defaultStyle));
     }
   }
 
@@ -221,36 +178,50 @@ class _NotificationTile extends StatelessWidget {
     final (iconData, messageSpan) = _buildNotificationContent();
     final timeAgo = timeago.format(notification.createdAt, locale: 'ja');
 
-    return ListTile(
-      tileColor: notification.isRead
-          ? Colors.transparent
-          : Colors.blue.withOpacity(0.05),
-      leading: CircleAvatar(
-        backgroundColor: Colors.blue.withOpacity(0.1),
-        child: Icon(iconData, color: Colors.blueAccent, size: 20),
-      ),
-      title: RichText(text: messageSpan),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4.0),
-        child: Text(
-          timeAgo,
-          style: const TextStyle(color: Colors.grey, fontSize: 12),
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      color: notification.isRead
+          ? Colors.white.withOpacity(0.95)
+          : const Color.fromARGB(255, 208, 233, 251),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Colors.blue.withOpacity(0.1),
+          child: Icon(iconData, color: Colors.blueAccent, size: 20),
         ),
-      ),
-      trailing: notification.postThumbnailUrl.isNotEmpty
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(4.0),
-              child: Image.network(
-                notification.postThumbnailUrl,
-                width: 50,
-                height: 50,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.hide_image, color: Colors.grey),
+        title: RichText(
+          text: TextSpan(
+            // 元のメッセージスタイルを継承
+            style: DefaultTextStyle.of(context).style,
+            children: [
+              // 元のメッセージ内容
+              messageSpan,
+              // スペースを挟む
+              const TextSpan(text: ' '),
+              // 時間を表示
+              TextSpan(
+                text: timeAgo,
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
               ),
-            )
-          : null,
-      onTap: onTap,
+            ],
+          ),
+        ),
+        trailing: notification.postThumbnailUrl.isNotEmpty
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(10.0),
+                child: Image.network(
+                  notification.postThumbnailUrl,
+                  width: 50,
+                  height: 50,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.hide_image, color: Colors.grey),
+                ),
+              )
+            : null,
+        onTap: onTap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
   }
 }

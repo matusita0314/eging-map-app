@@ -7,7 +7,7 @@ part of 'discover_feed_provider.dart';
 // **************************************************************************
 
 String _$discoverFeedNotifierHash() =>
-    r'a2d71cba9a6e6d8b205c20e300dc4536fdcd98c7';
+    r'68f22c4c007306ab0b9a33cff5432f091cdb2949';
 
 /// See also [DiscoverFeedNotifier].
 @ProviderFor(DiscoverFeedNotifier)

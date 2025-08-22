@@ -1,5 +1,3 @@
-// lib/features/account/saved_posts_page.dart (修正後のコード)
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,9 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../widgets/post_feed_card.dart';
 import '../../models/sort_by.dart';
-import 'account.dart';
+import 'account.dart'; // Accountクラスの正しいパスに修正してください
 import '../../models/post_model.dart';
-import '../../widgets/common_app_bar.dart';
 
 part 'saved_posts_page.g.dart'; // build_runnerで自動生成
 
@@ -66,35 +63,85 @@ class SavedPostsPage extends ConsumerWidget {
     final savedPostsAsyncValue = ref.watch(savedPostsProvider(userId));
 
     return Scaffold(
-      appBar: CommonAppBar(title: const Text('保存した投稿')),
-      body: savedPostsAsyncValue.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('エラー: $err')),
-        data: (posts) {
-          if (posts.isEmpty) {
-            return const Center(child: Text('保存した投稿がありません。'));
-          }
+      extendBodyBehindAppBar: true,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              Color(0xFF13547a),
+              Color(0xFF80d0c7),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) {
+              return [
+                // フローティング風AppBar
+                SliverToBoxAdapter(
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                        const Expanded(
+                          child: Text(
+                            '保存した投稿',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF13547a),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 48), // アイコンボタンのサイズ分のスペース
+                      ],
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              ];
+            },
+            body: savedPostsAsyncValue.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(child: Text('エラー: $err')),
+              data: (posts) {
+                if (posts.isEmpty) {
+                  return const Center(child: Text('保存した投稿がありません。'));
+                }
 
-          return Column(
-            children: [
-              SortHeader(sortByProvider: savedPostsSortByProvider),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView.builder(
+                return ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   itemCount: posts.length,
                   itemBuilder: (context, index) {
-                    // ▼▼▼ PostFeedCardに変更 (ユーザー情報は表示する) ▼▼▼
                     return PostFeedCard(
                       post: posts[index],
                       showAuthorInfo: true,
                     );
                   },
-                ),
-              ),
-            ],
-          );
-        },
+                );
+              },
+            ),
+          ),
+        ),
       ),
     );
   }

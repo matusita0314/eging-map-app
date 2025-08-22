@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:rxdart/rxdart.dart';
-import 'mission_detail_page.dart';
+import 'challenge_detail_page.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../models/challenge_model.dart';
 
@@ -33,25 +33,142 @@ class _ChallengePageState extends State<ChallengePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CommonAppBar(
-        title: const Text('チャレンジ'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            tooltip: 'チャレンジミッションとは？',
-            onPressed: () => _showHelpDialog(context),
+      extendBodyBehindAppBar: true,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              Color(0xFF13547a), // 深い青
+              Color(0xFF80d0c7), // 明るい水色
+            ],
           ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: _ranks.map((rank) => Tab(text: rank.toUpperCase())).toList(),
+        ),
+        child: SafeArea(
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) {
+              return [
+                // フローティング風AppBar
+                SliverToBoxAdapter(
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'チャレンジ',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF13547a),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.help_outline, color: Color(0xFF13547a)),
+                          tooltip: 'チャレンジミッション',
+                          onPressed: () => _showHelpDialog(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                // ピン留めされるタブバー
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _StickyTabBarDelegate(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(35),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(35),
+                        child: TabBar(
+                          controller: _tabController,
+                          indicator: BoxDecoration(
+                            color: const Color(0xFF13547a).withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(35),
+                          ),
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicatorPadding: const EdgeInsets.all(4),
+                          labelColor: Colors.white,
+                          unselectedLabelColor: const Color(0xFF13547a),
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          unselectedLabelStyle: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                          tabs: _ranks.map((rank) => Tab(text: rank.toUpperCase())).toList(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 1)),
+              ];
+            },
+            body: TabBarView(
+              controller: _tabController,
+              children: _ranks.map((rank) => _MissionList(rank: rank)).toList(),
+            ),
+          ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: _ranks.map((rank) => _MissionList(rank: rank)).toList(),
-      ),
     );
+  }
+}
+
+// カスタムSliverPersistentHeaderDelegate
+class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+
+  _StickyTabBarDelegate({required this.child});
+
+  @override
+  double get minExtent => 70.0;
+
+  @override
+  double get maxExtent => 70.0;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      color: Colors.transparent,
+      child: SizedBox(height: 75.0, child: child),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) {
+    return oldDelegate != this;
   }
 }
 
@@ -64,17 +181,20 @@ class _MissionList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (_currentUserId == null) {
-      return const Center(child: Text('ログインが必要です。'));
+      return const Center(
+        child: Text(
+          'ログインが必要です。',
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
+      );
     }
 
-    // 2つのStreamを結合する
     return StreamBuilder<List<QuerySnapshot>>(
       stream: CombineLatestStream.combine2(
         FirebaseFirestore.instance
             .collection('challenges')
             .where('rank', isEqualTo: rank)
             .snapshots(),
-        // ユーザーがクリアしたチャレンジを取得
         FirebaseFirestore.instance
             .collection('users')
             .doc(_currentUserId)
@@ -87,13 +207,27 @@ class _MissionList extends StatelessWidget {
       ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          );
         }
         if (snapshot.hasError) {
-          return const Center(child: Text('エラーが発生しました'));
+          return const Center(
+            child: Text(
+              'エラーが発生しました',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          );
         }
         if (!snapshot.hasData || snapshot.data![0].docs.isEmpty) {
-          return const Center(child: Text('このランクのミッションはありません。'));
+          return const Center(
+            child: Text(
+              'このランクのミッションはありません。',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          );
         }
 
         final allChallengesDocs = snapshot.data![0].docs;
@@ -107,49 +241,68 @@ class _MissionList extends StatelessWidget {
             .map((doc) => Challenge.fromFirestore(doc))
             .toList();
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16.0),
-          itemCount: challenges.length,
-          itemBuilder: (context, index) {
-            final challenge = challenges[index];
-            final isCompleted = completedChallengeIds.contains(challenge.id);
+        return CustomScrollView(
+          slivers: [
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final challenge = challenges[index];
+                  final isCompleted = completedChallengeIds.contains(challenge.id);
 
-            return Card(
-              elevation: 2,
-              margin: const EdgeInsets.only(bottom: 16),
-              color: isCompleted ? Colors.green.shade50 : null,
-              child: ListTile(
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      // MissionDetailPage に challenge オブジェクトを渡す
-                      builder: (context) =>
-                          MissionDetailPage(challenge: challenge),
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      color: isCompleted ? Colors.green.shade50 : Colors.white.withOpacity(0.95),
+                      child: ListTile(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => MissionDetailPage(challenge: challenge),
+                            ),
+                          );
+                        },
+                        contentPadding: const EdgeInsets.all(16),
+                        title: Text(
+                          challenge.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(
+                            challenge.description,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        trailing: isCompleted
+                            ? const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                                size: 40,
+                              )
+                            : const Icon(
+                                Icons.radio_button_unchecked,
+                                color: Colors.grey,
+                                size: 32,
+                              ),
+                      ),
                     ),
                   );
                 },
-                contentPadding: const EdgeInsets.all(16),
-                title: Text(
-                  challenge.title,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(challenge.description),
-                ),
-                trailing: isCompleted
-                    ? const Icon(
-                        Icons.check_circle,
-                        color: Colors.green,
-                        size: 40,
-                      )
-                    : const Icon(
-                        Icons.radio_button_unchecked,
-                        color: Colors.grey,
-                      ),
+                childCount: challenges.length,
               ),
-            );
-          },
+            ),
+            // 下部に余白を追加
+            const SliverToBoxAdapter(
+              child: SizedBox(height: 20),
+            ),
+          ],
         );
       },
     );
@@ -160,7 +313,11 @@ void _showHelpDialog(BuildContext context) {
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('チャレンジミッションとは？'),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        'チャレンジミッション',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
       content: const SingleChildScrollView(
         child: Text(
           'チャレンジミッションは、あなたのエギングスキルを証明するための課題です。\n\n'
@@ -180,7 +337,10 @@ void _showHelpDialog(BuildContext context) {
       ),
       actions: [
         TextButton(
-          child: const Text('閉じる'),
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF13547a),
+          ),
+          child: const Text('閉じる', style: TextStyle(fontWeight: FontWeight.bold)),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ],

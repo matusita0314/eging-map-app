@@ -41,17 +41,17 @@ class FollowingFeedNotifier extends _$FollowingFeedNotifier {
   }
 
   Future<QuerySnapshot> _fetchPosts(List<String> userIds) {
-  // 並び替えの状態を監視
-  final sortBy = ref.watch(followingSortByProvider);
-  Query query = FirebaseFirestore.instance.collection('posts')
-      .where('userId', whereIn: userIds)
-      // vvv 動的に並び替え vvv
-      .orderBy(sortBy.value.replaceFirst('_desc', ''), descending: true)
-      .limit(_limit);
-  final last = _lastDoc;
-  if (last != null) query = query.startAfterDocument(last);
-  return query.get();
-}
+    // 並び替えの状態を監視
+    final sortBy = ref.watch(followingSortByProvider);
+    Query query = FirebaseFirestore.instance.collection('posts')
+        .where('userId', whereIn: userIds)
+        // vvv 動的に並び替え vvv
+        .orderBy(sortBy.value.replaceFirst('_desc', ''), descending: true)
+        .limit(_limit);
+    final last = _lastDoc;
+    if (last != null) query = query.startAfterDocument(last);
+    return query.get();
+  }
 
   Future<void> fetchNextPage() async {
     if (state.isReloading || _noMorePosts) return;
@@ -86,19 +86,19 @@ class TodayFeedNotifier extends _$TodayFeedNotifier {
   }
 
   Future<QuerySnapshot> _fetchPosts() {
-  // 並び替えの状態を監視
-  final sortBy = ref.watch(todaySortByProvider);
-  final now = DateTime.now();
-  final startOfToday = DateTime(now.year, now.month, now.day);
-  Query query = FirebaseFirestore.instance.collection('posts')
-      .where('createdAt', isGreaterThanOrEqualTo: startOfToday)
-      // vvv 動的に並び替え vvv
-      .orderBy(sortBy.value.replaceFirst('_desc', ''), descending: true)
-      .limit(_limit);
-  final last = _lastDoc;
-  if (last != null) query = query.startAfterDocument(last);
-  return query.get();
-}
+    // 並び替えの状態を監視
+    final sortBy = ref.watch(todaySortByProvider);
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    Query query = FirebaseFirestore.instance.collection('posts')
+        .where('createdAt', isGreaterThanOrEqualTo: startOfToday)
+        // vvv 動的に並び替え vvv
+        .orderBy(sortBy.value.replaceFirst('_desc', ''), descending: true)
+        .limit(_limit);
+    final last = _lastDoc;
+    if (last != null) query = query.startAfterDocument(last);
+    return query.get();
+  }
 
   Future<void> fetchNextPage() async {
     if (state.isReloading || _noMorePosts) return;
@@ -111,7 +111,6 @@ class TodayFeedNotifier extends _$TodayFeedNotifier {
     }
   }
 }
-
 
 // --- UI定義 ---
 class TimelinePage extends ConsumerStatefulWidget {
@@ -156,65 +155,185 @@ class _TimelinePageState extends ConsumerState<TimelinePage>
     final unreadNotificationCount = ref.watch(unreadNotificationsCountProvider).value ?? 0;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.search),
-          tooltip: '友達を見つける',
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => const ChatPage(initialIndex: 2)),
+      extendBodyBehindAppBar: true,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              Color(0xFF13547a),
+              Color(0xFF80d0c7),
+            ],
           ),
         ),
-        title: const Text('ホーム'),
-        actions: [
-          IconButton(
-            icon: Badge(
-              label: Text('$unreadChatCount'),
-              isLabelVisible: unreadChatCount > 0,
-              child: const Icon(Icons.chat_outlined),
-            ),
-            tooltip: 'チャット',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const ChatPage(initialIndex: 1)),
+        child: SafeArea(
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) {
+              return [
+                // フローティング風AppBar
+                SliverToBoxAdapter(
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.search),
+                          tooltip: '友達を見つける',
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => const ChatPage(initialIndex: 2)),
+                          ),
+                        ),
+                        const Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            width: 140,
+                            child: Text(
+                              'ホーム',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF13547a),
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Badge(
+                            label: Text('$unreadChatCount'),
+                            isLabelVisible: unreadChatCount > 0,
+                            child: const Icon(Icons.chat_outlined),
+                          ),
+                          tooltip: 'チャット',
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => const ChatPage(initialIndex: 1)),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Badge(
+                            label: Text('$unreadNotificationCount'),
+                            isLabelVisible: unreadNotificationCount > 0,
+                            child: const Icon(Icons.notifications_outlined),
+                          ),
+                          tooltip: 'お知らせ',
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => const NotificationPage()),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                // ピン留めされるタブバー
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _StickyTabBarDelegate(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(35),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(35),
+                        child: TabBar(
+                          controller: _tabController,
+                          indicator: BoxDecoration(
+                            color: const Color(0xFF13547a).withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(35),
+                          ),
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicatorPadding: const EdgeInsets.all(4),
+                          labelColor: Colors.white,
+                          unselectedLabelColor: const Color(0xFF13547a),
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          unselectedLabelStyle: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                          tabs: const [
+                            Tab(text: 'みつける'),
+                            Tab(text: 'フォロー中'),
+                            Tab(text: 'Today'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 1)),
+              ];
+            },
+            body: TabBarView(
+              controller: _tabController,
+              children: [
+                _AlgoliaTimelineFeedView(onFilterPressed: _showFilterSheet),
+                _FirestoreTimelineFeedView(
+                  provider: followingFeedNotifierProvider,
+                  fetchNextPage: (ref) => ref.read(followingFeedNotifierProvider.notifier).fetchNextPage(),
+                  sortByProvider: followingSortByProvider,
+                ),
+                _FirestoreTimelineFeedView(
+                  provider: todayFeedNotifierProvider,
+                  fetchNextPage: (ref) => ref.read(todayFeedNotifierProvider.notifier).fetchNextPage(),
+                  sortByProvider: todaySortByProvider,
+                ),
+              ],
             ),
           ),
-          IconButton(
-            icon: Badge(
-              label: Text('$unreadNotificationCount'),
-              isLabelVisible: unreadNotificationCount > 0,
-              child: const Icon(Icons.notifications_outlined),
-            ),
-            tooltip: 'お知らせ',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const NotificationPage()),
-            ),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'みつける'),
-            Tab(text: 'フォロー中'),
-            Tab(text: 'Today'),
-          ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _AlgoliaTimelineFeedView(onFilterPressed: _showFilterSheet),
-          _FirestoreTimelineFeedView(
-            provider: followingFeedNotifierProvider,
-            fetchNextPage: (ref) => ref.read(followingFeedNotifierProvider.notifier).fetchNextPage(),
-            sortByProvider: followingSortByProvider, // 並び替えProviderを渡す
-          ),
-          _FirestoreTimelineFeedView(
-            provider: todayFeedNotifierProvider,
-            fetchNextPage: (ref) => ref.read(todayFeedNotifierProvider.notifier).fetchNextPage(),
-            sortByProvider: todaySortByProvider, // 並び替えProviderを渡す
-          ),
-        ],
       ),
     );
+  }
+}
+
+class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+
+  _StickyTabBarDelegate({required this.child});
+
+  @override
+  double get minExtent => 70.0;
+
+  @override
+  double get maxExtent => 70.0;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      color: Colors.transparent,
+      child: SizedBox(height: 75.0, child: child),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) {
+    return oldDelegate != this;
   }
 }
 
@@ -235,7 +354,18 @@ class _AlgoliaTimelineFeedView extends ConsumerWidget {
             children: [
               _FilterHeader(onFilterPressed: onFilterPressed),
               const Expanded(
-                child: Center(child: Text('投稿はまだありません。'))
+                child: Center(
+                  child: Text(
+                    '投稿はまだありません。\n'
+                    '釣りに行こう！',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
               ),
             ],
           );
@@ -250,7 +380,6 @@ class _AlgoliaTimelineFeedView extends ConsumerWidget {
           },
           child: RefreshIndicator(
             onRefresh: () async => ref.invalidate(discoverFeedNotifierProvider),
-            
             child: ListView.builder(
               padding: const EdgeInsets.only(top: 8.0),
               itemCount: feedState.posts.length + 1,
@@ -287,7 +416,7 @@ class _FilterHeader extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 8.0),
       child: Chip(
-        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
         onDeleted: onDeleted,
         deleteIcon: const Icon(Icons.close, size: 16),
         backgroundColor: _getColorForCategory(category),
@@ -314,7 +443,7 @@ class _FilterHeader extends ConsumerWidget {
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+            padding: const EdgeInsets.fromLTRB(8, 4, 12, 4),
             decoration: BoxDecoration(
               color: const Color.fromARGB(255, 230, 230, 230),
               borderRadius: BorderRadius.circular(12),
@@ -323,7 +452,7 @@ class _FilterHeader extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 IconButton(
-                  icon: const Text('🦑', style: TextStyle(fontSize: 30)),
+                  icon: const Text('🦑', style: TextStyle(fontSize: 25)),
                   onPressed: onFilterPressed,
                 ),
                 Expanded(
@@ -352,7 +481,7 @@ class _FilterHeader extends ConsumerWidget {
             ),
           ),
           
-          const SizedBox(height: 3),
+          const SizedBox(height: 5),
 
           Wrap(
             spacing: 6.0,
@@ -430,7 +559,16 @@ class _FirestoreTimelineFeedView extends ConsumerWidget {
             children: [
               _SortHeader(sortByProvider: sortByProvider),
               const Expanded(
-                child: Center(child: Text('投稿はまだありません。'))
+                child: Center(
+                  child: Text(
+                    '投稿はまだありません。',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
               ),
             ],
           );

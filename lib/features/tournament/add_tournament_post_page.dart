@@ -16,13 +16,13 @@ class TournamentSubmissionPage extends StatefulWidget {
   State<TournamentSubmissionPage> createState() => _TournamentSubmissionPageState();
 }
 
-class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  final _currentUser = FirebaseAuth.instance.currentUser!;
+class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
+  final _currentUser = FirebaseAuth.instance.currentUser!;
   bool _isUploading = false;
   final _formKey = GlobalKey<FormState>();
 
   bool get isEditing => widget.post != null;
   
-
   final List<Uint8List> _imageBytesList = [];
   String? _selectedWeather;
   String? _selectedSquidType;
@@ -45,12 +45,12 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
   final _appealPointController = TextEditingController();
 
   @override
-    void initState() {
-      super.initState();
-      if (widget.tournament.name.contains("料理")) {
-        _ingredientControllers.add(IngredientController());
-      }
+  void initState() {
+    super.initState();
+    if (widget.tournament.name.contains("料理")) {
+      _ingredientControllers.add(IngredientController());
     }
+  }
 
   @override
   void dispose() {
@@ -67,11 +67,12 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     _impressionController.dispose();  
     _tackleLureController.dispose();
     _appealPointController.dispose();
-    _ingredientControllers.forEach((c) => c.dispose());
+    for (var c in _ingredientControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  // カメラでの画像選択を強制
   Future<void> _pickImages() async {
     final maxImages = widget.tournament.rule.maxImageCount;
     final bool useCamera = widget.tournament.rule.metric == 'SIZE' || widget.tournament.rule.metric == 'COUNT';
@@ -83,7 +84,6 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
       return;
     }
     
-    // ImagePickerをカメラモードで起動
     final picker = ImagePicker();
     if (useCamera) {
       final pickedFile = await picker.pickImage(source: ImageSource.camera);
@@ -107,18 +107,17 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
   Future<void> _submitPost() async {
     if (!_formKey.currentState!.validate()) return;
     if (_imageBytesList.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('写真を1枚以上撮影してください。')));
-    return;
-      } 
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('写真を1枚以上撮影してください。')));
+      return;
+    } 
     if (widget.tournament.name.contains("料理") && _ingredientControllers.every((c) => c.nameController.text.isEmpty)) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('材料を1つ以上入力してください。')));
-        return;
-      }
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('材料を1つ以上入力してください。')));
+      return;
+    }
     setState(() => _isUploading = true);
 
     try {
       final List<String> downloadUrls = [];
-      // 1. まず全ての画像をStorageにアップロードする
       for (final bytes in _imageBytesList) {
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_${downloadUrls.length}.jpg';
         final ref = FirebaseStorage.instance.ref().child(
@@ -129,9 +128,7 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
         downloadUrls.add(url);
       }
 
-
-      // 2. Firestoreに保存するデータを拡張
-      final submissionData = {
+      final submissionData = <String, dynamic>{
         'userId': _currentUser.uid,
         'userName': _currentUser.displayName ?? '名無しさん',
         'userPhotoUrl': _currentUser.photoURL ?? '',
@@ -145,13 +142,12 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
       final metric = widget.tournament.rule.metric;
       if (metric == 'SIZE' || metric == 'COUNT') {
         submissionData.addAll({
-          'squidType': ?_selectedSquidType,
+          'squidType': _selectedSquidType,
           'egiName': _egiNameController.text,
-          'weather': ?_selectedWeather,
-          'judgedCount': int.tryParse(_countController.text) ?? 0,
+          'weather': _selectedWeather,
+          'judgedCount': int.tryParse(_countController.text), // nullの可能性もある
         });
       } else if (metric == 'LIKE_COUNT') {
-        // IDで大会を判定（より安全なのはruleにtypeフィールドを追加すること）
         if (widget.tournament.name.contains("料理")) {
           final ingredientsList = _ingredientControllers
               .where((c) => c.nameController.text.isNotEmpty)
@@ -160,13 +156,13 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
                     'quantity': c.quantityController.text,
                   })
               .toList();
-           submissionData.addAll({
+          submissionData.addAll({
             'ingredients': ingredientsList,
             'process': _processController.text,
             'impression': _impressionController.text,
           });
         } else if (widget.tournament.name.contains("タックル")) {
-           submissionData.addAll({
+          submissionData.addAll({
             'tackleRod': _tackleRodController.text,
             'tackleReel': _tackleReelController.text,
             'lure': _tackleLureController.text,
@@ -176,7 +172,6 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
         }
       }
 
-      // 3. Firestoreに書き込む
       await FirebaseFirestore.instance
           .collection('tournaments')
           .doc(widget.tournament.id)
@@ -185,7 +180,7 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
 
       if (mounted) {
         final message = widget.tournament.rule.judgingType == 'MANUAL'
-            ? '釣果を提出しました！運営の判定をお待ちください。'
+            ? '提出しました！運営の判定をお待ちください。'
             : '投稿が完了しました！';
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -202,6 +197,7 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     }
   }
 
+  // --- 以下、既存のフォーム生成ロジック（変更なし） ---
   Widget _buildMainTournamentForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -273,13 +269,11 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     );
   }
 
-  // 料理コンテスト用のフォーム
   Widget _buildCookingContestForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildSectionTitle('材料 *'),
-        // 材料リスト入力欄
         ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -304,7 +298,6 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
                       decoration: const InputDecoration(labelText: '分量', border: OutlineInputBorder()),
                     ),
                   ),
-                  // 最後の行以外に削除ボタンを表示
                   if (_ingredientControllers.length > 1)
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline),
@@ -316,13 +309,12 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
                       },
                     )
                   else
-                    const SizedBox(width: 48), // 削除ボタン分のスペースを確保
+                    const SizedBox(width: 48),
                 ],
               ),
             );
           },
         ),
-        // 「材料を追加」ボタン
         TextButton.icon(
           icon: const Icon(Icons.add),
           label: const Text('材料を追加'),
@@ -349,7 +341,6 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     );
   }
 
-  // タックルコンテスト用のフォーム
   Widget _buildTackleContestForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -389,129 +380,245 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     );
   }
 
+  // --- ここからUIのビルド部分 ---
   @override
   Widget build(BuildContext context) {
     final maxImages = widget.tournament.rule.maxImageCount;
     final metric = widget.tournament.rule.metric;
-    final imageSectionTitle = '必須：釣果の写真 ($maxImages枚まで)';
+    final imageSectionTitle = '写真 ($maxImages枚まで)';
     final bool useCamera = metric == 'SIZE' || metric == 'COUNT';
 
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.tournament.name} へ提出')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildSectionTitle(imageSectionTitle),
-              SizedBox(
-                height: 100,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _imageBytesList.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == _imageBytesList.length) {
-                      return _imageBytesList.length < maxImages
-                          ? GestureDetector(
-                              onTap: _pickImages,
-                              child: Container(
-                                width: 100,
-                                height: 100,
-                                margin: const EdgeInsets.only(right: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      useCamera ? Icons.camera_alt : Icons.photo_library,
-                                      color: Colors.grey,
-                                    ),
-                                    Text(
-                                      useCamera ? '撮影する' : '選択する',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ],
-                                ),
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Color(0xFF13547a), Color(0xFF80d0c7)],
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: NestedScrollView(
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  return [
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _StickyAppBarDelegate(
+                        child: Container(
+                          margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.95),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
                               ),
-                            )
-                          : const SizedBox.shrink();
-                    }
-                    return SizedBox(
-                      width: 100,
-                      height: 100,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) => Dialog(
-                                  backgroundColor: Colors.transparent,
-                                  insetPadding: const EdgeInsets.all(10),
-                                  child: InteractiveViewer( // ピンチ操作でズームできるようにする
-                                    child: Image.memory(
-                                      _imageBytesList[index],
-                                      fit: BoxFit.contain,
-                                    ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.arrow_back, color: Color(0xFF13547a)),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '${widget.tournament.name}へ提出',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF13547a),
                                   ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              );
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.memory(_imageBytesList[index], fit: BoxFit.cover, width: 100, height: 100),
+                              ),
+                              const SizedBox(width: 48),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ];
+                },
+                body: Form(
+                  key: _formKey,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    children: [
+                      _buildCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionTitle(imageSectionTitle),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              height: 100,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _imageBytesList.length + 1,
+                                itemBuilder: (context, index) {
+                                  if (index == _imageBytesList.length) {
+                                    return _imageBytesList.length < maxImages
+                                        ? GestureDetector(
+                                            onTap: _pickImages,
+                                            child: Container(
+                                              width: 100,
+                                              height: 100,
+                                              margin: const EdgeInsets.only(right: 8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.shade200,
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    useCamera ? Icons.camera_alt : Icons.photo_library,
+                                                    color: Colors.grey,
+                                                  ),
+                                                  Text(
+                                                    useCamera ? '撮影する' : '選択する',
+                                                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          )
+                                        : const SizedBox.shrink();
+                                  }
+                                  return SizedBox(
+                                    width: 100,
+                                    height: 100,
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        GestureDetector(
+                                          onTap: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (_) => Dialog(
+                                                backgroundColor: Colors.transparent,
+                                                insetPadding: const EdgeInsets.all(10),
+                                                child: InteractiveViewer(
+                                                  child: Image.memory(
+                                                    _imageBytesList[index],
+                                                    fit: BoxFit.contain,
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          child: Container(
+                                            margin: const EdgeInsets.only(right: 8),
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Image.memory(_imageBytesList[index], fit: BoxFit.cover, width: 100, height: 100),
+                                            ),
+                                          ),
+                                        ),
+                                        Positioned(
+                                          top: -14,
+                                          right: -12,
+                                          child: IconButton(
+                                            icon: const Icon(Icons.cancel, color: Colors.black54, size: 20),
+                                            onPressed: () => setState(() => _imageBytesList.removeAt(index)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
                             ),
-                          ),
-                          Positioned(
-                            top: -14,
-                            right: -6,
-                            child: IconButton(
-                              icon: const Icon(Icons.cancel, color: Colors.black54, size: 22),
-                              onPressed: () => setState(() => _imageBytesList.removeAt(index)),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    );
-                  },
+                      const SizedBox(height: 16),
+                      _buildCard(
+                        child: _buildDynamicForm(metric),
+                      ),
+                      const SizedBox(height: 80),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              // --- 大会の種類に応じて表示するフォームを切り替え ---
-              if (metric == 'SIZE' || metric == 'COUNT')
-                _buildMainTournamentForm()
-              else if (metric == 'LIKE_COUNT')
-                if (widget.tournament.name.contains("料理"))
-                  _buildCookingContestForm()
-                else if (widget.tournament.name.contains("タックル"))
-                  _buildTackleContestForm()
-                else
-                  const Text('この大会用のフォームが定義されていません。')
-              else
-                const Text('この大会用のフォームが定義されていません。'),
-            ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildSubmitButton(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDynamicForm(String metric) {
+    if (metric == 'SIZE' || metric == 'COUNT') {
+      return _buildMainTournamentForm();
+    } else if (metric == 'LIKE_COUNT') {
+      if (widget.tournament.name.contains("料理")) {
+        return _buildCookingContestForm();
+      } else if (widget.tournament.name.contains("タックル")) {
+        return _buildTackleContestForm();
+      }
+    }
+    return const Text('この大会用のフォームが定義されていません。');
+  }
+
+  Widget _buildSubmitButton() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: SafeArea(
+        top: false,
+        child: Center(
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+              shape: const StadiumBorder(),
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              elevation: 8,
+            ),
+            onPressed: _isUploading ? null : _submitPost,
+            child: _isUploading
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+                : const Text('提出する', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ),
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-          onPressed: _isUploading ? null : _submitPost,
-          child: _isUploading
-              ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-              : const Text('提出する'),
-        ),
+    );
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
+      child: child,
     );
   }
 
@@ -526,7 +633,10 @@ class _TournamentSubmissionPageState extends State<TournamentSubmissionPage> {  
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('$label: ${value.toStringAsFixed(1)} ℃'),
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0),
+          child: Text('$label: ${value.toStringAsFixed(1)} ℃', style: TextStyle(color: Colors.grey.shade700)),
+        ),
         Slider(
           value: value,
           min: min,
@@ -551,5 +661,31 @@ class IngredientController {
   void dispose() {
     nameController.dispose();
     quantityController.dispose();
+  }
+}
+
+class _StickyAppBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+
+  _StickyAppBarDelegate({required this.child});
+
+  @override
+  double get minExtent => 70.0;
+
+  @override
+  double get maxExtent => 70.0;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Colors.transparent,
+      child: child,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) {
+    return true;
   }
 }

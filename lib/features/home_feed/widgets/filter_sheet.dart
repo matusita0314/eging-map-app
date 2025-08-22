@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/discover_filter_provider.dart';
-import '../../../models/sort_by.dart';
-import '../timeline_page.dart';
 import '../../../providers/discover_feed_provider.dart';
 
 class FilterSheet extends ConsumerStatefulWidget {
@@ -12,6 +10,7 @@ class FilterSheet extends ConsumerStatefulWidget {
 }
 
 class _FilterSheetState extends ConsumerState<FilterSheet> {
+  
   static const Map<String, List<String>> regions = {
     '北海道': ['北海道'],
     '東北': ['青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県'],
@@ -23,11 +22,13 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     '九州・沖縄': ['福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県'],
   };
   
-  // UIで使う定数
   static const List<String> squidTypes = ['アオリイカ', 'コウイカ', 'ヤリイカ', 'スルメイカ', 'ヒイカ', 'モンゴウイカ'];
   static const List<String> weatherOptions = ['快晴', '晴れ', '曇り', '雨'];
   static const List<String> timeOfDayOptions = ['朝', '昼', '夜'];
   static const List<String> sizeRanges = ['0-20', '20-35', '35-50', '50以上'];
+  static const List<int?> periodOptions = [7, 30, 365, null]; // [null] が 'すべて' に対応
+  static const Map<int?, String> periodLabels = {7: '一週間', 30: '一か月', 365: '一年', null: 'すべて'};
+
 
   String? _selectedRegion;
   List<String> _currentPrefectures = [];
@@ -53,47 +54,194 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     final filterNotifier = ref.read(discoverFilterNotifierProvider.notifier);
     final discoverFeedAsync = ref.watch(discoverFeedNotifierProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('絞り込み検索'),
-        leading: const CloseButton(),
-        actions: [ TextButton(onPressed: () { filterNotifier.resetFilters(); setState(() { _selectedRegion = null; _currentPrefectures = []; }); }, child: const Text('リセット')) ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          _buildSectionTitle('期間'),
-          Wrap(spacing: 8.0, children: [ ChoiceChip(label: const Text('一週間'), selected: filterState.periodDays == 7, onSelected: (s) => filterNotifier.setPeriod(s ? 7 : null)), ChoiceChip(label: const Text('一か月'), selected: filterState.periodDays == 30, onSelected: (s) => filterNotifier.setPeriod(s ? 30 : null)), ChoiceChip(label: const Text('一年'), selected: filterState.periodDays == 365, onSelected: (s) => filterNotifier.setPeriod(s ? 365 : null)), ChoiceChip(label: const Text('すべて'), selected: filterState.periodDays == null, onSelected: (s) { if (s) filterNotifier.setPeriod(null); }) ]),
-          _buildSectionTitle('地域'),
-          DropdownButtonFormField<String>(value: _selectedRegion, hint: const Text('地方を選択'), isExpanded: true, items: regions.keys.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(), onChanged: (v) => setState(() { _selectedRegion = v; _currentPrefectures = (v != null) ? regions[v]! : []; filterNotifier.setPrefecture(null); })),
-          const SizedBox(height: 16),
-          if (_selectedRegion != null) DropdownButtonFormField<String>(value: filterState.prefecture, hint: const Text('都道府県を選択'), isExpanded: true, items: _currentPrefectures.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(), onChanged: (v) => filterNotifier.setPrefecture(v)),
-          _buildSectionTitle('イカの種類'),
-          Wrap(spacing: 8.0, children: squidTypes.map((type) => FilterChip(label: Text(type), selected: filterState.squidTypes.contains(type), onSelected: (_) => filterNotifier.toggleSquidType(type))).toList()),
-          _buildSectionTitle('サイズ (cm)'),
-          Wrap(spacing: 8.0, children: sizeRanges.map((range) => FilterChip(label: Text(range), selected: filterState.sizeRanges.contains(range), onSelected: (_) => filterNotifier.toggleSizeRange(range))).toList()),
-          _buildSectionTitle('天気'),
-          Wrap(spacing: 8.0, children: weatherOptions.map((weather) => FilterChip(label: Text(weather), selected: filterState.weather.contains(weather), onSelected: (_) => filterNotifier.toggleWeather(weather))).toList()),
-          _buildSectionTitle('時間帯'),
-          Wrap(spacing: 8.0, children: timeOfDayOptions.map((time) => FilterChip(label: Text(time), selected: filterState.timeOfDay.contains(time), onSelected: (_) => filterNotifier.toggleTimeOfDay(time))).toList()),
-        ],
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size.fromHeight(50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-          child: discoverFeedAsync.when(
-            data: (feedState) => Text('${feedState.hitCount}件 ヒット!!'),
-            loading: () => const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white)),
-            error: (e,s) => const Text('エラー'),
-          ),
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8F9FA), // 明るい背景色
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(24.0),
+          topRight: Radius.circular(24.0),
         ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+            child: Row(
+              // 3つの要素（左の空白、中央のタイトル、右のボタン）を均等に配置
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // 【左側】右側のボタンと幅を合わせるための、透明で見えないプレースホルダー
+                Opacity(
+                  opacity: 0.0,
+                  child: IgnorePointer( // タップも無効化
+                    child: TextButton(
+                      onPressed: () {},
+                      child: const Text('リセット'),
+                    ),
+                  ),
+                ),
+
+                // 【中央】タイトル
+                const Text(
+                  '絞り込み検索',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+
+                // 【右側】実際のリセットボタン
+                TextButton(
+                  onPressed: () {
+                    filterNotifier.resetFilters();
+                    setState(() {
+                      _selectedRegion = null;
+                      _currentPrefectures = [];
+                    });
+                  },
+                  child: const Text('リセット'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                _buildSectionContainer('期間', 
+                  Wrap(spacing: 8.0, runSpacing: 8.0, children: periodOptions.map((p) => _buildChoiceChip<int?>(periodLabels[p]!, p, filterState.periodDays, (selected) => filterNotifier.setPeriod(selected))).toList()),
+                ),
+                _buildSectionContainer('地域', 
+                  Column(
+                    children: [
+                      _buildDropdown(_selectedRegion, '地方を選択', regions.keys.toList(), (v) => setState(() { _selectedRegion = v; _currentPrefectures = (v != null) ? regions[v]! : []; filterNotifier.setPrefecture(null); })),
+                      if (_selectedRegion != null) ...[
+                        const SizedBox(height: 12),
+                        _buildDropdown(filterState.prefecture, '都道府県を選択', _currentPrefectures, (v) => filterNotifier.setPrefecture(v)),
+                      ]
+                    ],
+                  )
+                ),
+                _buildSectionContainer('イカの種類',
+                  Wrap(spacing: 8.0, runSpacing: 8.0, children: squidTypes.map((type) => _buildFilterChip(type, filterState.squidTypes.contains(type), () => filterNotifier.toggleSquidType(type))).toList()),
+                ),
+                _buildSectionContainer('サイズ',
+                  Wrap(spacing: 8.0, runSpacing: 8.0, children: sizeRanges.map((range) => _buildFilterChip(range, filterState.sizeRanges.contains(range), () => filterNotifier.toggleSizeRange(range))).toList()),
+                ),
+                 _buildSectionContainer('天気',
+                  Wrap(spacing: 8.0, runSpacing: 8.0, children: weatherOptions.map((weather) => _buildFilterChip(weather, filterState.weather.contains(weather), () => filterNotifier.toggleWeather(weather))).toList()),
+                ),
+                _buildSectionContainer('時間帯',
+                  Wrap(spacing: 8.0, runSpacing: 8.0, children: timeOfDayOptions.map((time) => _buildFilterChip(time, filterState.timeOfDay.contains(time), () => filterNotifier.toggleTimeOfDay(time))).toList()),
+                ),
+              ],
+            ),
+          ),
+          // ★ フッターのボタン部分
+          Container(
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0,-5))],
+            ),
+            child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+                // ★ child の中で、通信状態に応じて表示を切り替える
+                child: discoverFeedAsync.when(
+                  // データ取得成功時
+                  data: (feedState) => Text(
+                    '${feedState.hitCount}件の投稿に絞り込む',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  // ローディング中
+                  loading: () => const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                  ),
+                  error: (e, s) => const Text(
+                    '件数の取得に失敗',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          ),
+        ],
       ),
     );
   }
-  Widget _buildSectionTitle(String title) => Padding(padding: const EdgeInsets.only(top: 24.0, bottom: 8.0), child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)));
+
+  // ★ フィルターセクションをカード化するヘルパー
+  Widget _buildSectionContainer(String title, Widget content) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+          const SizedBox(height: 12),
+          content,
+        ],
+      ),
+    );
+  }
+
+  // ★ 複数選択チップのヘルパー
+  Widget _buildFilterChip(String label, bool isSelected, VoidCallback onPressed) {
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => onPressed(),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20.0),
+        side: BorderSide(color: isSelected ? Colors.blue : Colors.grey.shade300),
+      ),
+      backgroundColor: Colors.white,
+      selectedColor: Colors.blue.withOpacity(0.1),
+      labelStyle: TextStyle(color: isSelected ? Colors.blue.shade800 : Colors.black87, fontWeight: FontWeight.w600),
+      showCheckmark: false,
+    );
+  }
+  
+  // ★ 単一選択チップのヘルパー
+  Widget _buildChoiceChip<T>(String label, T value, T? groupValue, ValueChanged<T> onSelected){
+     final isSelected = value == groupValue;
+     return ChoiceChip(
+       label: Text(label),
+       selected: isSelected,
+       onSelected: (selected) { if(selected) onSelected(value); },
+       shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20.0),
+        side: BorderSide(color: isSelected ? Colors.blue : Colors.grey.shade300),
+      ),
+      backgroundColor: Colors.white,
+      selectedColor: Colors.blue.withOpacity(0.1),
+      labelStyle: TextStyle(color: isSelected ? Colors.blue.shade800 : Colors.black87, fontWeight: FontWeight.w600),
+     );
+  }
+  
+  // ★ ドロップダウンのヘルパー
+  Widget _buildDropdown(String? value, String hint, List<String> items, ValueChanged<String?> onChanged) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      hint: Text(hint),
+      isExpanded: true,
+      items: items.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
 }

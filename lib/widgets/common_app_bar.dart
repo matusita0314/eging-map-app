@@ -29,16 +29,15 @@ class CommonAppBar extends ConsumerWidget implements PreferredSizeWidget {
   }
 
   @override
-  // ▼▼▼ buildメソッドに WidgetRef ref を追加 ▼▼▼
   Widget build(BuildContext context, WidgetRef ref) {
-    // Providerを監視して未読数を取得
     final unreadCount = ref.watch(unreadNotificationsCountProvider).value ?? 0;
 
     return AppBar(
+      backgroundColor: Colors.transparent, 
+      elevation: 0,   
       title: title,
       bottom: bottom,
       actions: [
-        // ▼▼▼ ここから通知ベルのUIを追加 ▼▼▼
         IconButton(
           icon: Stack(
             clipBehavior: Clip.none,
@@ -71,9 +70,6 @@ class CommonAppBar extends ConsumerWidget implements PreferredSizeWidget {
           },
           tooltip: 'お知らせ',
         ),
-        // ▲▲▲ ここまで通知ベルのUI ▲▲▲
-
-        // 既存のactions（ログアウトボタンなど）を追加
         ...actions,
         IconButton(
           icon: const Icon(Icons.logout),

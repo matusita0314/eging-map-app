@@ -13,20 +13,78 @@ import 'tournament_user_submissions_page.dart';
 import '../account/account.dart';
 import '../../providers/following_provider.dart';
 
+// ★★★ ここからが変更点 ★★★
+
+// --- Riverpod Providerの定義 ---
+
+// 1. マイページの「自分のエントリー情報」を取得するProvider
+final myTournamentEntryProvider = StreamProvider.autoDispose.family<DocumentSnapshot, String>((ref, tournamentId) {
+  final userId = FirebaseAuth.instance.currentUser?.uid;
+  if (userId == null) {
+    return Stream.error("ユーザーがログインしていません");
+  }
+  return FirebaseFirestore.instance
+      .collection('tournaments').doc(tournamentId)
+      .collection('entries').doc(userId)
+      .snapshots();
+});
+
+// 2. マイページの「自分の投稿リスト」を取得するProvider
+final myTournamentPostsProvider = StreamProvider.autoDispose.family<QuerySnapshot, String>((ref, tournamentId) {
+  final userId = FirebaseAuth.instance.currentUser!.uid;
+  return FirebaseFirestore.instance
+      .collection('tournaments').doc(tournamentId)
+      .collection('posts')
+      .where('userId', isEqualTo: userId)
+      .where('status', whereIn: ['pending', 'approved'])
+      .orderBy('createdAt', descending: true)
+      .snapshots();
+});
+
+// 3. ランキングタブの「ランキング情報」を取得するProvider
+final tournamentRankingsProvider = StreamProvider.autoDispose.family<QuerySnapshot, String>((ref, tournamentId) {
+  return FirebaseFirestore.instance
+      .collection('tournaments').doc(tournamentId)
+      .collection('rankings')
+      .where('rank', isNotEqualTo: null)
+      .orderBy('rank')
+      .limit(100)
+      .snapshots();
+});
+
+// 4. みんなの投稿タブ（タイムライン）の「投稿リスト」を取得するProvider
 final tournamentSortProvider = StateProvider<String>((ref) => 'createdAt');
+final tournamentTimelineProvider = StreamProvider.autoDispose.family<QuerySnapshot, String>((ref, tournamentId) {
+  final sortBy = ref.watch(tournamentSortProvider);
+  return FirebaseFirestore.instance
+      .collection('tournaments').doc(tournamentId)
+      .collection('posts')
+      .where('status', isEqualTo: 'approved')
+      .orderBy(sortBy, descending: true)
+      .snapshots();
+});
+
+
+// --- ウィジェットのStateful化とMixinの適用 ---
 
 class TournamentDashboardPage extends StatefulWidget {
   final String tournamentId;
   const TournamentDashboardPage({super.key, required this.tournamentId});
 
   @override
-  State<TournamentDashboardPage> createState() => _TournamentDashboardPageState();
+  State<TournamentDashboardPage> createState() =>
+      _TournamentDashboardPageState();
 }
 
+// AutomaticKeepAliveClientMixin を追加
 class _TournamentDashboardPageState extends State<TournamentDashboardPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   late final TabController _tabController;
   Tournament? _tournament;
+
+  // ★ wantKeepAlive を true にしてページ全体のキャッシュを有効化
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -34,9 +92,12 @@ class _TournamentDashboardPageState extends State<TournamentDashboardPage>
     _tabController = TabController(length: 3, vsync: this);
     _fetchTournamentData();
   }
-    Future<void> _fetchTournamentData() async {
+
+  Future<void> _fetchTournamentData() async {
     final doc = await FirebaseFirestore.instance
-        .collection('tournaments').doc(widget.tournamentId).get();
+        .collection('tournaments')
+        .doc(widget.tournamentId)
+        .get();
     if (doc.exists && mounted) {
       setState(() {
         _tournament = Tournament.fromFirestore(doc);
@@ -52,50 +113,174 @@ class _TournamentDashboardPageState extends State<TournamentDashboardPage>
 
   @override
   Widget build(BuildContext context) {
+    // ★ super.build(context) を呼び出し
+    super.build(context);
+
     if (_tournament == null) {
-      return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
+      return Scaffold(
+          appBar: AppBar(),
+          body: const Center(child: CircularProgressIndicator()));
     }
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${_tournament!.name}'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.person), text: 'マイページ'),
-            Tab(icon: Icon(Icons.emoji_events), text: 'ランキング'),
-            Tab(icon: Icon(Icons.groups), text: 'みんなの投稿'),
-          ],
+      extendBodyBehindAppBar: true,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              Color(0xFF13547a),
+              Color(0xFF80d0c7),
+            ],
+          ),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _MyStatusTab(tournament: _tournament!),
-          _RankingsTab(tournament: _tournament!),
-          _TimelineTab(tournament: _tournament!),
-        ],
+        child: SafeArea(
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) {
+              return [
+                SliverToBoxAdapter(
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                        Expanded(
+                          child: Text(
+                            _tournament!.name,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF13547a),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 48),
+                      ],
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _StickyTabBarDelegate(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(35),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(35),
+                        child: TabBar(
+                          controller: _tabController,
+                          indicator: BoxDecoration(
+                            color: const Color(0xFF13547a).withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(35),
+                          ),
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicatorPadding: const EdgeInsets.all(4),
+                          labelColor: Colors.white,
+                          unselectedLabelColor: const Color(0xFF13547a),
+                          labelStyle:
+                              const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          tabs: const [
+                            Tab(text: 'マイページ'),
+                            Tab(text: 'ランキング'),
+                            Tab(text: 'みんなの投稿'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              ];
+            },
+            body: TabBarView(
+              controller: _tabController,
+              children: [
+                _MyStatusTab(tournament: _tournament!),
+                _RankingsTab(tournament: _tournament!),
+                _TimelineTab(tournament: _tournament!),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
+class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  _StickyTabBarDelegate({required this.child});
+  @override
+  double get minExtent => 70.0;
+  @override
+  double get maxExtent => 70.0;
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 7.0, horizontal: 12.0),
+      color: Colors.transparent,
+      child: SizedBox(height: 70.0, child: child),
+    );
+  }
+  @override
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) {
+    return true;
+  }
+}
 
-class _MyStatusTab extends StatelessWidget {
+// --- 各タブを ConsumerStatefulWidget に変更 ---
+
+class _MyStatusTab extends ConsumerStatefulWidget {
   final Tournament tournament;
   const _MyStatusTab({required this.tournament});
+
+  @override
+  ConsumerState<_MyStatusTab> createState() => _MyStatusTabState();
+}
+
+class _MyStatusTabState extends ConsumerState<_MyStatusTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
 
   Widget _buildLikeStatusCard(BuildContext context, Map<String, dynamic> myEntryData) {
     final currentUser = FirebaseAuth.instance.currentUser!;
     final rank = myEntryData['currentRank'] as int?;
-
-    // ユーザーの承認済み投稿をリアルタイムで監視するStream
     final userPostsStream = FirebaseFirestore.instance
-        .collection('tournaments').doc(tournament.id)
+        .collection('tournaments').doc(widget.tournament.id)
         .collection('posts')
         .where('userId', isEqualTo: currentUser.uid)
         .where('status', isEqualTo: 'approved')
         .snapshots();
-
     return Card(
       elevation: 4,
       child: Padding(
@@ -133,7 +318,6 @@ class _MyStatusTab extends StatelessWidget {
                   final data = doc.data() as Map<String, dynamic>;
                   totalLikes += (data['likeCount'] as int? ?? 0);
                 }
-                
                 return Text(
                   '合計 $totalLikes いいね',
                   style: TextStyle(
@@ -150,11 +334,10 @@ class _MyStatusTab extends StatelessWidget {
     );
   }
 
-  // --- ▼▼▼【追加】メイン大会用のステータスカード（既存のUI） ▼▼▼ ---
   Widget _buildRankStatusCard(Map<String, dynamic> myEntryData) {
     final rank = myEntryData['currentRank'] as int?;
     final score = myEntryData['currentScore'];
-    final metricUnit = tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
+    final metricUnit = widget.tournament.rule.metric == 'SIZE' ? 'cm' : '匹';
 
     return Card(
       elevation: 4,
@@ -198,35 +381,21 @@ class _MyStatusTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final currentUser = FirebaseAuth.instance.currentUser!;
-    final metricUnit = tournament.rule.metric == 'SIZE'
-        ? 'cm'
-        : (tournament.rule.metric == 'COUNT' ? '匹' : 'いいね');
-    final Query postsQuery = FirebaseFirestore.instance
-        .collection('tournaments')
-        .doc(tournament.id)
-        .collection('posts')
-        .where('userId', isEqualTo: currentUser.uid)
-        .where('status', whereIn: ['pending', 'approved'])
-        .orderBy('createdAt', descending: true);
-
+    final entryAsync = ref.watch(myTournamentEntryProvider(widget.tournament.id));
+    final postsAsync = ref.watch(myTournamentPostsProvider(widget.tournament.id));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('tournaments').doc(tournament.id)
-                .collection('entries').doc(currentUser.uid)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              
-              if (!snapshot.hasData || !snapshot.data!.exists) {
+          entryAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) => Text('エラー: $err'),
+            data: (entryDoc) {
+              if (!entryDoc.exists) {
                 return const Card(
                   elevation: 4,
                   child: Padding(
@@ -237,11 +406,9 @@ class _MyStatusTab extends StatelessWidget {
                   ),
                 );
               }
-
-              final myEntryData = snapshot.data!.data() as Map<String, dynamic>;
-              
-              if (tournament.rule.metric == 'LIKE_COUNT') {
-                return _buildLikeStatusCard(context,myEntryData);
+              final myEntryData = entryDoc.data() as Map<String, dynamic>;
+              if (widget.tournament.rule.metric == 'LIKE_COUNT') {
+                return _buildLikeStatusCard(context, myEntryData);
               } else {
                 return _buildRankStatusCard(myEntryData);
               }
@@ -253,7 +420,7 @@ class _MyStatusTab extends StatelessWidget {
             label: const Text('釣果/作品を提出する'),
             onPressed: () async {
               final postsQuery = await FirebaseFirestore.instance
-                  .collection('tournaments').doc(tournament.id).collection('posts')
+                  .collection('tournaments').doc(widget.tournament.id).collection('posts')
                   .where('userId', isEqualTo: currentUser.uid)
                   .where('status', whereIn: ['pending', 'approved'])
                   .limit(1)
@@ -262,9 +429,8 @@ class _MyStatusTab extends StatelessWidget {
               bool alreadySubmitted = postsQuery.docs.isNotEmpty;
               bool proceed = true;
 
-              // ★ 2. もし投稿済みなら、アラートを表示
               if (alreadySubmitted &&
-                  tournament.rule.submissionLimit == 'SINGLE_OVERWRITE' &&
+                  widget.tournament.rule.submissionLimit == 'SINGLE_OVERWRITE' &&
                   context.mounted) {
                 proceed = await showDialog<bool>(
                   context: context,
@@ -281,36 +447,50 @@ class _MyStatusTab extends StatelessWidget {
                           child: const Text('OK')),
                     ],
                   ),
-                ) ??
-                false;
+                ) ?? false;
               }
 
-              // ★ 3. OKが押された場合のみ、投稿ページへ
               if (proceed && context.mounted) {
-                final doc = await FirebaseFirestore.instance.collection('tournaments').doc(tournament.id).get();
-                if (doc.exists && context.mounted) {
-                  final tournament = Tournament.fromFirestore(doc);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => TournamentSubmissionPage(tournament: tournament),
-                  ));
-                }
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (context) => TournamentSubmissionPage(tournament: widget.tournament),
+                ));
               }
             },
           ),
           const Divider(height: 48),
-          const Text('あなたが提出した投稿', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          StreamBuilder<QuerySnapshot>(
-            stream: postsQuery.snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.data!.docs.isEmpty) {
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30.0), // 丸い角
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Text(
+                'あなたが提出した投稿',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF13547a), // テキスト色を変更
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          postsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) => Text('エラー: $err'),
+            data: (postsSnapshot) {
+              if (postsSnapshot.docs.isEmpty) {
                 return const Center(child: Text('まだ投稿がありません。'));
               }
-              final postDocs = snapshot.data!.docs;
-              
+              final postDocs = postsSnapshot.docs;
               return ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -324,7 +504,7 @@ class _MyStatusTab extends StatelessWidget {
                     child: Stack(
                       children: [
                         _TournamentFeedCard(
-                          tournament: tournament,
+                          tournament: widget.tournament,
                           post: postDoc,
                           showAuthorInfo: false,
                         ),
@@ -346,93 +526,187 @@ class _MyStatusTab extends StatelessWidget {
   }
 }
 
-class _RankingsTab extends StatelessWidget {
+class _RankingsTab extends ConsumerStatefulWidget {
   final Tournament tournament;
   const _RankingsTab({required this.tournament});
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('tournaments')
-          .doc(tournament.id)
-          .collection('rankings')
-          .where('rank', isNotEqualTo: null) // rankフィールドが存在するドキュメントのみ取得
-          .orderBy('rank') // rank(順位)の昇順で並び替え
-          .limit(100)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return const Center(child: Text('エラーが発生しました'));
-        }
+  ConsumerState<_RankingsTab> createState() => _RankingsTabState();
+}
 
-        final rankings = snapshot.data?.docs ?? [];
+class _RankingsTabState extends ConsumerState<_RankingsTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final rankingsAsync = ref.watch(tournamentRankingsProvider(widget.tournament.id));
+
+    return rankingsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (err, stack) => const Center(child: Text('エラーが発生しました')),
+      data: (rankingsSnapshot) {
+        final rankings = rankingsSnapshot.docs;
         final top3 = rankings.take(3).toList();
 
-        return SingleChildScrollView(
-          child: Column(
-            children: [
-              _PodiumWidget(top3: top3, tournament: tournament),
-              const Divider(),
-              if (rankings.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: Center(child: Text("ランキング集計ボタンが押されるまで、\nランキングは表示されません。", textAlign: TextAlign.center)),
-                ),
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: rankings.length,
-                itemBuilder: (context, index) {
-                  final doc = rankings[index];
-                  final rankData = doc.data() as Map<String, dynamic>;
-                  final rank = rankData['rank'] as int;
-                  final metricUnit = tournament.rule.metric == 'SIZE'
-          ? 'cm'
-          : (tournament.rule.metric == 'COUNT' ? '匹' : 'いいね');
-                  
-                  return _RankingTile(
-                    rank: rank,
-                    data: rankData,
-                    tournament: tournament,
-                    metricUnit: metricUnit,
-                     onTap: () {
-                      if (tournament.rule.submissionLimit == 'SINGLE_OVERWRITE') {
-                        final postId = rankData['maxSizePostId'] as String?;
-                        if (postId != null) {
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (context) => TournamentPostDetailPage(
-                              tournament: tournament,
-                              tournamentId: tournament.id,
-                              postId: postId,
-                            ),
-                          ));
-                        }
-                      } else {
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (context) => TournamentUserSubmissionsPage(
-                            tournament: tournament,
-                            tournamentId: tournament.id,
-                            userId: doc.id,
-                            userName: rankData['userName'] ?? '名無しさん',
-                          ),
-                        ));
-                      }
-                    },
-                  );
-                },
+        return Padding(
+          padding: const EdgeInsets.only(top: 10.0),
+          child: SingleChildScrollView(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 8.0),
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20.0),
               ),
-            ],
+              child: Column(
+                children: [
+                  _PodiumWidget(top3: top3, tournament: widget.tournament),
+                  const Divider(),
+                  if (rankings.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: Center(
+                          child: Text("ランキング集計ボタンが押されるまで、\nランキングは表示されません。",
+                              textAlign: TextAlign.center)),
+                    ),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: rankings.length,
+                    itemBuilder: (context, index) {
+                      final doc = rankings[index];
+                      final rankData = doc.data() as Map<String, dynamic>;
+                      final rank = rankData['rank'] as int;
+                      final metricUnit = widget.tournament.rule.metric == 'SIZE'
+                          ? 'cm'
+                          : (widget.tournament.rule.metric == 'COUNT' ? '匹' : 'いいね');
+
+                      return _RankingTile(
+                        rank: rank,
+                        data: rankData,
+                        tournament: widget.tournament,
+                        metricUnit: metricUnit,
+                        onTap: () {
+                          if (widget.tournament.rule.submissionLimit == 'SINGLE_OVERWRITE') {
+                            final postId = rankData['maxSizePostId'] as String?;
+                            if (postId != null) {
+                              Navigator.of(context).push(MaterialPageRoute(
+                                builder: (context) => TournamentPostDetailPage(
+                                  tournament: widget.tournament,
+                                  tournamentId: widget.tournament.id,
+                                  postId: postId,
+                                ),
+                              ));
+                            }
+                          } else {
+                            Navigator.of(context).push(MaterialPageRoute(
+                              builder: (context) =>
+                                  TournamentUserSubmissionsPage(
+                                tournament: widget.tournament,
+                                tournamentId: widget.tournament.id,
+                                userId: doc.id,
+                                userName: rankData['userName'] ?? '名無しさん',
+                              ),
+                            ));
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
     );
   }
 }
-// --- 表彰台ウィジェット（枠表示対応版） ---
+
+class _TimelineTab extends ConsumerStatefulWidget {
+  final Tournament tournament;
+  const _TimelineTab({required this.tournament});
+
+  @override
+  ConsumerState<_TimelineTab> createState() => _TimelineTabState();
+}
+
+class _TimelineTabState extends ConsumerState<_TimelineTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+  
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final timelineAsync = ref.watch(tournamentTimelineProvider(widget.tournament.id));
+    final sortBy = ref.watch(tournamentSortProvider);
+
+    return timelineAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (err, stack) => const Center(child: Text('エラーが発生しました')),
+      data: (postsSnapshot) {
+        if (postsSnapshot.docs.isEmpty) {
+          return const Center(
+              child: Text('この大会の投稿はまだありません。',
+                  style: TextStyle(color: Colors.white)));
+        }
+        final posts = postsSnapshot.docs;
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12.0, 16.0, 12.0, 8.0),
+          itemCount: posts.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Wrap(
+                  spacing: 8.0,
+                  alignment: WrapAlignment.center,
+                  children: widget.tournament.rule.timelineSortOptions.map((option) {
+                    String label;
+                    switch (option) {
+                      case 'judgedSize':
+                        label = 'サイズ順';
+                        break;
+                      case 'judgedCount':
+                        label = '匹数順';
+                        break;
+                      case 'likeCount':
+                        label = 'いいね数順';
+                        break;
+                      default:
+                        label = '新着順';
+                    }
+                    return ChoiceChip(
+                      label: Text(label),
+                      selected: sortBy == option,
+                      onSelected: (selected) {
+                        if (selected) {
+                          ref.read(tournamentSortProvider.notifier).state = option;
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+              );
+            }
+            final post = posts[index - 1];
+            return _TournamentFeedCard(
+              tournament: widget.tournament,
+              post: post,
+            );
+          },
+        );
+      }
+    );
+  }
+}
+
+
+// --- 以下、変更のないウィジェット ---
+
 class _PodiumWidget extends StatelessWidget {
   final List<QueryDocumentSnapshot> top3;
   final Tournament tournament;
@@ -461,14 +735,12 @@ class _PodiumWidget extends StatelessWidget {
   }
 }
 
-
 class _PodiumProfile extends StatelessWidget {
   final QueryDocumentSnapshot? doc;
   final Tournament tournament;
   final int rank;
   final double height;
   
-
   const _PodiumProfile({
     this.doc,
     required this.tournament,
@@ -483,7 +755,6 @@ class _PodiumProfile extends StatelessWidget {
     final metricUnit = tournament.rule.metric == 'SIZE'
         ? 'cm'
         : (tournament.rule.metric == 'COUNT' ? '匹' : 'いいね');
-
     
     Color medalColor;
     switch (rank) {
@@ -492,7 +763,6 @@ class _PodiumProfile extends StatelessWidget {
       default: medalColor = const Color(0xFFCD7F32);
     }
     
-    // データがある場合のみGestureDetectorを有効にする
     return GestureDetector(
       onTap: (userId != null && data != null) ? () {
         Navigator.of(context).push(MaterialPageRoute(
@@ -507,7 +777,6 @@ class _PodiumProfile extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // データがない場合はプレースホルダーを表示
           CircleAvatar(
             radius: 30,
             backgroundColor: Colors.grey.shade300,
@@ -561,73 +830,6 @@ class _RankingTile extends StatelessWidget {
   }
 }
 
-class _TimelineTab extends ConsumerWidget {
-  final Tournament tournament;
-  const _TimelineTab({required this.tournament});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sortBy = ref.watch(tournamentSortProvider);
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: Wrap(
-            spacing: 8.0,
-            alignment: WrapAlignment.center,
-            children: tournament.rule.timelineSortOptions.map((option) {
-              String label;
-              switch (option) {
-                case 'judgedSize': label = 'サイズ順'; break;
-                case 'judgedCount': label = '匹数順'; break;
-                case 'likeCount': label = 'いいね数順'; break;
-                default: label = '新着順';
-              }
-              return ChoiceChip(
-                label: Text(label),
-                selected: sortBy == option,
-                onSelected: (selected) {
-                  if (selected) ref.read(tournamentSortProvider.notifier).state = option;
-                },
-              );
-            }).toList(),
-          ),
-        ),
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('tournaments')
-                .doc(tournament.id)
-                .collection('posts')
-                .where('status', isEqualTo: 'approved')
-                .orderBy(sortBy, descending: true)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final posts = snapshot.data!.docs;
-              return ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                itemCount: posts.length,
-                itemBuilder: (context, index) {
-                  final post = posts[index];
-                  return _TournamentFeedCard(
-                    tournament: tournament,
-                    post: post,
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-
 class _TournamentFeedCard extends ConsumerWidget {
   final Tournament tournament;
   final DocumentSnapshot post;
@@ -641,7 +843,6 @@ class _TournamentFeedCard extends ConsumerWidget {
 
    Widget _buildStyledScoreDisplay(
       Map<String, dynamic> postData, Tournament tournament) {
-    // いいね数を競う大会の場合
     if (tournament.rule.metric == 'LIKE_COUNT') {
       final likeCount = postData['likeCount'] ?? 0;
       return Center(
@@ -670,7 +871,6 @@ class _TournamentFeedCard extends ConsumerWidget {
         ),
       );
     }
-    // 【分岐】それ以外（メイン大会）の場合
     else {
       final squidType = postData['squidType'] as String? ?? '釣果';
       String scoreText = '';
@@ -725,16 +925,13 @@ class _TournamentFeedCard extends ConsumerWidget {
     final postId = post.id;
     final currentUser = FirebaseAuth.instance.currentUser!;
     final dynamic imageUrlsData = postData['imageUrls'] ?? postData['imageUrl'];
-    List<String> imageUrls = List<String>.from(imageUrlsData);
+    List<String> imageUrls = [];
     if (imageUrlsData is List) {
-      // 新しいデータ形式 (List<dynamic>) の場合
       imageUrls = List<String>.from(imageUrlsData.map((e) => e.toString()));
     } else if (imageUrlsData is String) {
-      // 古いデータ形式 (String) の場合
       imageUrls = [imageUrlsData];
     }
 
-    // 必要なデータを安全に抽出
     final userName = postData['userName'] as String? ?? '名無しさん';
     final userPhotoUrl = postData['userPhotoUrl'] as String?;
     final userId = postData['userId'] as String;
@@ -746,8 +943,6 @@ class _TournamentFeedCard extends ConsumerWidget {
     final judgedCount = postData['judgedCount'] as num?;
     final pageController = PageController();
 
-
-    // いいね状態をリアルタイムで監視
     final isLikedStream = FirebaseFirestore.instance
         .collection('tournaments').doc(tournament.id)
         .collection('posts').doc(postId)
@@ -762,7 +957,6 @@ class _TournamentFeedCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- ユーザー情報ヘッダー ---
           if (showAuthorInfo)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
@@ -809,7 +1003,6 @@ class _TournamentFeedCard extends ConsumerWidget {
             ),
           ),
           
-          // --- 投稿画像 ---
           if (imageUrls.isNotEmpty)
             GestureDetector(
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -835,7 +1028,6 @@ class _TournamentFeedCard extends ConsumerWidget {
                         );
                       },
                     ),
-                    // 複数枚ある場合のみインジケータを表示
                     if (imageUrls.length > 1)
                       Padding(
                         padding: const EdgeInsets.all(8.0),
@@ -853,7 +1045,6 @@ class _TournamentFeedCard extends ConsumerWidget {
               ),
             ),
           
-          // --- 釣果情報 ---
           Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Column(
@@ -876,13 +1067,10 @@ class _TournamentFeedCard extends ConsumerWidget {
           ),
         ),
 
-
-          // --- アクションボタン ---
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
             child: Row(
               children: [
-                // いいねボタン
                 StreamBuilder<DocumentSnapshot>(
                   stream: isLikedStream,
                   builder: (context, snapshot) {
@@ -903,7 +1091,6 @@ class _TournamentFeedCard extends ConsumerWidget {
                   }
                 ),
                 const SizedBox(width: 16),
-                // コメントボタン
                 Row(
                   children: [
                     IconButton(
@@ -921,7 +1108,6 @@ class _TournamentFeedCard extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(width: 100),
-                // フォローボタン
                 if (showAuthorInfo && userId != currentUser.uid)
                   StreamBuilder<DocumentSnapshot>(
                     stream: FirebaseFirestore.instance
@@ -994,7 +1180,7 @@ Widget _buildStatusChip(String status) {
       label = '判定待ち';
       icon = Icons.hourglass_top;
       break;
-    default: // 'rejected' などの他のステータスも想定
+    default:
       chipColor = Colors.red;
       label = '却下';
       icon = Icons.cancel;

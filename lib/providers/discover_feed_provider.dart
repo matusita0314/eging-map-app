@@ -1,5 +1,3 @@
-// lib/providers/discover_feed_provider.dart
-
 import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:algolia_helper_flutter/algolia_helper_flutter.dart';

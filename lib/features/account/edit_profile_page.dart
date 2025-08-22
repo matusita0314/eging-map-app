@@ -22,7 +22,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Uint8List? _imageData;
   bool _isLoading = true;
 
-  // 変更済みかを判定するフラグ
   bool _hasChangedDisplayName = false;
   bool _hasChangedPhoto = false;
 
@@ -49,7 +48,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         });
       }
     } catch (e) {
-      print("ユーザー情報の読み込みエラー: $e");
+      debugPrint("ユーザー情報の読み込みエラー: $e");
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -58,7 +57,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _pickImage() async {
-    // 変更不可の場合は何もしない
     if (_hasChangedPhoto) return;
     final pickedFile = await ImagePicker().pickImage(
       source: ImageSource.gallery,
@@ -85,7 +83,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'introduction': _introductionController.text,
       };
 
-      // 名前の更新処理
       if (!_hasChangedDisplayName &&
           _nameController.text != _user.displayName) {
         await _user.updateDisplayName(_nameController.text);
@@ -94,7 +91,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         updateData['hasChangedDisplayName'] = true;
       }
 
-      // 画像の更新処理
       if (!_hasChangedPhoto && _imageData != null) {
         final originalImage = img.decodeImage(_imageData!);
         final resizedImage = originalImage!.width > 500
@@ -114,7 +110,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         updateData['hasChangedPhoto'] = true;
       }
 
-      // Firestoreのusersコレクションを更新
       if (updateData.isNotEmpty) {
         await FirebaseFirestore.instance
             .collection('users')
@@ -129,7 +124,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      print('プロフィール更新エラー: $e');
+      debugPrint('プロフィール更新エラー: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -148,109 +143,160 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _introductionController.dispose();
     super.dispose();
   }
-
+  
+  // ★★★ UI構造を全面的に刷新 ★★★
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('プロフィールを編集')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundImage: _imageData != null
-                            ? MemoryImage(_imageData!)
-                            : (_user.photoURL != null &&
-                                          _user.photoURL!.isNotEmpty
-                                      ? CachedNetworkImageProvider(_user.photoURL!)
-                                      : null)
-                                  as ImageProvider?,
-                        child:
-                            _imageData == null &&
-                                (_user.photoURL == null ||
-                                    _user.photoURL!.isEmpty)
-                            ? const Icon(Icons.person, size: 60)
-                            : null,
-                      ),
-                      if (!_hasChangedPhoto)
-                        IconButton.filled(
-                          icon: const Icon(Icons.camera_alt),
-                          onPressed: _pickImage,
-                          tooltip: 'プロフィール画像を変更',
+      extendBodyBehindAppBar: true,
+      body: Container(
+        // ★ 背景グラデーション
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              Color(0xFF13547a),
+              Color(0xFF80d0c7),
+            ],
+          ),
+        ),
+        child: Stack(
+          children: [
+            SafeArea(
+              child: NestedScrollView(
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  return [
+                    // ★ フローティングAppBar
+                    SliverToBoxAdapter(
+                      child: Container(
+                        margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.95),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 4))],
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // ▼▼▼ 注意喚起メッセージを追加 ▼▼▼
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
+                        child: Row(
+                          children: [
+                            IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).pop()),
+                            const Expanded(child: Text('プロフィールを編集', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF13547a)))),
+                            const SizedBox(width: 48),
+                          ],
+                        ),
+                      ),
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.shade200),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.blue),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            '表示名とプロフィール画像は一度しか変更できません。',
-                            style: TextStyle(
-                              height: 1.4,
-                              color: Colors.black87,
+                  ];
+                },
+                body: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          // ★ メインコンテンツをカード化
+                          Container(
+                            padding: const EdgeInsets.all(20.0),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              children: [
+                                Stack(
+                                  alignment: Alignment.bottomRight,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 60,
+                                      backgroundImage: _imageData != null
+                                          ? MemoryImage(_imageData!)
+                                          : (_user.photoURL != null && _user.photoURL!.isNotEmpty
+                                              ? CachedNetworkImageProvider(_user.photoURL!)
+                                              : null) as ImageProvider?,
+                                      child: _imageData == null && (_user.photoURL == null || _user.photoURL!.isEmpty)
+                                          ? const Icon(Icons.person, size: 60)
+                                          : null,
+                                    ),
+                                    if (!_hasChangedPhoto)
+                                      IconButton.filled(
+                                        icon: const Icon(Icons.camera_alt),
+                                        onPressed: _pickImage,
+                                        tooltip: 'プロフィール画像を変更',
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 24),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.blue.shade200),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.info_outline, color: Colors.blue),
+                                      SizedBox(width: 12),
+                                      Expanded(child: Text('表示名とプロフィール画像は一度しか変更できません。', style: TextStyle(height: 1.4, color: Colors.black87))),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                TextFormField(
+                                  controller: _nameController,
+                                  decoration: InputDecoration(
+                                    labelText: _hasChangedDisplayName ? '表示名 (変更済み)' : '表示名',
+                                    border: const OutlineInputBorder(),
+                                    filled: !_hasChangedDisplayName,
+                                    fillColor: Colors.white,
+                                  ),
+                                  enabled: !_hasChangedDisplayName,
+                                ),
+                                const SizedBox(height: 16),
+                                TextFormField(
+                                  controller: _introductionController,
+                                  decoration: const InputDecoration(
+                                    labelText: '自己紹介',
+                                    border: OutlineInputBorder(),
+                                    alignLabelWithHint: true, // ラベルを左上に
+                                  ),
+                                  maxLines: 5,
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 100), // ボタンとのスペース
+                        ],
+                      ),
                     ),
-                  ),
-
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: InputDecoration(
-                      labelText: _hasChangedDisplayName ? '表示名 (変更済み)' : '表示名',
-                      border: const OutlineInputBorder(),
-                      filled: !_hasChangedDisplayName, // 編集可の場合のみ色付け
-                      fillColor: Colors.white,
-                    ),
-                    enabled: !_hasChangedDisplayName,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _introductionController,
-                    decoration: const InputDecoration(
-                      labelText: '自己紹介',
-                      border: OutlineInputBorder(),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 32),
-                  ElevatedButton(
+              ),
+            ),
+            // ★ 保存ボタンを画面下部に固定
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(16.0),
+                color: Colors.transparent,
+                child: SafeArea(
+                  top: false,
+                  child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(50),
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: _isLoading ? null : _updateProfile,
-                    child: const Text('保存する'),
+                    child: const Text('保存する', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
-                ],
+                ),
               ),
-            ),
+            )
+          ],
+        ),
+      ),
     );
   }
 }

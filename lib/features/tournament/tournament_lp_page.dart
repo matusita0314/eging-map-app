@@ -58,7 +58,7 @@ class _TournamentLpPageState extends State<TournamentLpPage> {
             expandedHeight: 250.0,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(widget.tournament.name, style: const TextStyle(shadows: [Shadow(blurRadius: 8)])),
+              title: Text("ここはネイティブ", style: const TextStyle(shadows: [Shadow(blurRadius: 8)])),
               background: CachedNetworkImage(
                 imageUrl: widget.tournament.bannerUrl,
                 fit: BoxFit.cover,

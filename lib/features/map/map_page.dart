@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import '../../widgets/common_app_bar.dart';
 import '../../models/post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../post/add_post_page.dart';
@@ -29,20 +28,15 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   bool _isLoading = true;
   bool _iconsLoaded = false;
   
-
-  // マーカー関連
   BitmapDescriptor? _squidIcon;
-  BitmapDescriptor? _tappedSquidIcon; // 詳細ページから指定された時だけ使う
+  BitmapDescriptor? _tappedSquidIcon;
   Set<Marker> _markers = {};
-  Marker? _tappedMarker; // 新規投稿用のマーカー
+  Marker? _tappedMarker; 
 
-  // パフォーマンス改善
   final Map<String, Post> _postsCache = {};
   StreamSubscription<QuerySnapshot>? _postsSubscription;
 
   Post? _selectedPost;
-
-  // ( ... その他の変数は変更なし ... )
   bool _isDarkMap = false;
   bool _didRunInitialSetup = false;
   double _minSquidSize = 0;
@@ -499,14 +493,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     });
   }
 
-  void _toggleMapType() {
-    setState(() {
-      _currentMapType = _currentMapType == MapType.normal
-          ? MapType.satellite
-          : MapType.normal;
-    });
-  }
-
   void _showMapTypeDialog() {
     showDialog(
       context: context,
@@ -578,21 +564,10 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+
+    final bool canPop = Navigator.canPop(context);
+
     return Scaffold(
-      appBar: CommonAppBar(
-        title: const Text('マップ'),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _currentMapType == MapType.satellite
-                  ? Icons.satellite
-                  : Icons.map,
-            ),
-            onPressed: _showMapTypeDialog,
-            tooltip: '地図タイプを変更',
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton(
         heroTag: null,
         onPressed: _onAddPostButtonPressed,
@@ -610,19 +585,64 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             onMapCreated: _onMapCreated,
             onTap: _onMapTapped,
             markers: _markers,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
+            myLocationEnabled: false,
+            myLocationButtonEnabled: false,
             mapType: _currentMapType,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
-            padding: const EdgeInsets.only(bottom: 120), // シートの最小表示域とかぶらないように
+          ),
+
+          if (canPop)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // 戻るボタン
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Color(0xFF13547a)),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    // タイトル
+                    const Expanded(
+                      child: Text(
+                        '釣果ポイント',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF13547a),
+                        ),
+                      ),
+                    ),
+                    // 右側のスペース（戻るボタンとのバランスをとるため）
+                    const SizedBox(width: 48),
+                  ],
+                ),
+              ),
+            ),
           ),
           
-          // ( ... フィルターやスライダーのUIは変更なし ... )
           _buildFilterChips(),
           _buildDateRangeSlider(),
+          _buildMapTypeButton(),
           
-          // ▼▼▼【追加】DraggableScrollableSheetの表示ロジック ▼▼▼
           if (_selectedPost != null)
             // ウィジェットを画面外にドラッグして閉じる操作を検知
             NotificationListener<DraggableScrollableNotification>(
@@ -659,35 +679,49 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   Widget _buildMapTypeButton() {
     return Positioned(
-      top: 10,
+      bottom: 120,
       right: 10,
+      child: Container(  // Containerを追加
+      width: 60,      // 希望のサイズに調整
+      height: 60,     // 希望のサイズに調整
       child: FloatingActionButton(
+        heroTag: null,
         mini: true,
-        onPressed: _toggleMapType,
+        onPressed: _showMapTypeDialog,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black54,
+        tooltip: '表示設定',
         child: Icon(
           _currentMapType == MapType.satellite ? Icons.map : Icons.satellite,
+          size: 35,  // アイコンサイズも調整
         ),
       ),
+    ),
     );
   }
 
   Widget _buildFilterChips() {
-    return Positioned(
-      top: 10,
-      left: 10,
-      child: ActionChip(
-        avatar: const Icon(Icons.straighten, size: 16),
-        label: Text(
-          _minSquidSize > 0 ? '${_minSquidSize.round()} cm以上' : 'サイズ',
-        ),
-        onPressed: _showSizeFilterSheet,
-        elevation: 4,
+  return Positioned(
+    bottom: 200,
+    right: 10,
+    child: Container(
+      width: 60,  // サイズを指定
+      height: 60, // 幅と高さを同じに
+      child: FloatingActionButton(
+        heroTag: null,
+        elevation: 6,
         backgroundColor: Colors.white,
+        mini: true,
+        onPressed: _showSizeFilterSheet,
+        child: const Icon(
+          Icons.straighten,
+          size: 35,  // アイコンサイズを調整
+          color: Colors.black54,
+        ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildDateRangeSlider() {
     return Positioned(

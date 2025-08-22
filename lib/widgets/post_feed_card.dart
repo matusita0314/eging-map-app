@@ -29,7 +29,7 @@ class PostFeedCard extends ConsumerWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         clipBehavior: Clip.antiAlias,
         child: Container(
-          height: MediaQuery.of(context).size.height * 0.65,
+          height: MediaQuery.of(context).size.height * 0.7,
           color: Colors.grey.shade200,
         ),
       );
@@ -55,7 +55,7 @@ class PostFeedCard extends ConsumerWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         clipBehavior: Clip.antiAlias,
         child: Container(
-          height: screenHeight * 0.65, 
+          height: screenHeight * 0.7, 
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
