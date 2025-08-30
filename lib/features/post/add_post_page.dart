@@ -316,7 +316,7 @@ class _AddPostPageState extends State<AddPostPage> {
                             ),
                             SizedBox(height: 8),
                             Text(
-                              '・釣果のサイズが明確に分かるよう、必ず物差しなどを隣に置いてください。\n'
+                              '・胴長が明確に分かるよう、必ず物差しなどを隣に置いてください。\n'
                               '・写真はイカの真上から撮影してください。\n'
                               '・故意に釣果を偽るなどの不正行為は絶対にやめてください。\n\n'
                               '※ 上記が守られていない投稿は、運営の判断で削除する場合があります。',
@@ -351,7 +351,7 @@ class _AddPostPageState extends State<AddPostPage> {
                             const SizedBox(height: 16),
                             TextFormField(
                               controller: _squidSizeController,
-                              decoration: const InputDecoration(labelText: 'サイズ (cm)', prefixIcon: Icon(Icons.straighten_outlined)),
+                              decoration: const InputDecoration(labelText: '胴長(cm)', prefixIcon: Icon(Icons.straighten_outlined)),
                               keyboardType: TextInputType.number,
                               validator: (value) => value!.isEmpty ? '必須項目です' : null,
                             ),

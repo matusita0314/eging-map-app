@@ -65,7 +65,8 @@ class _TalkPageState extends State<TalkPage> {
   }
 
   Future<void> _markAsRead() async {
-    final chatRoomRef = FirebaseFirestore.instance.collection('chat_rooms').doc(widget.chatRoomId);
+    final chatRoomRef =
+        FirebaseFirestore.instance.collection('chat_rooms').doc(widget.chatRoomId);
     await chatRoomRef.update({'unreadCount.${_currentUser.uid}': 0});
   }
 
@@ -109,67 +110,85 @@ class _TalkPageState extends State<TalkPage> {
             colors: [Color(0xFF13547a), Color(0xFF80d0c7)],
           ),
         ),
-        child: Column(
+        // ★★★ ColumnをStackに変更 ★★★
+        child: Stack(
           children: [
-            _buildHeader(),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('chat_rooms')
-                    .doc(widget.chatRoomId)
-                    .collection('messages')
-                    .orderBy('createdAt', descending: true)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return Center(
-                        child: Text('${widget.chatTitle}にメッセージを送信しましょう！',
-                            style: const TextStyle(color: Colors.white)));
-                  }
-                  final messages = snapshot.data!.docs;
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(8.0),
-                    reverse: true,
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final currentMessage = Message.fromFirestore(messages[index]);
-                      final isMe = currentMessage.senderId == _currentUser.uid;
-                      
-                      bool needsSeparator = false;
-                      if (index == messages.length - 1) { // チャットの最初のメッセージ
-                        needsSeparator = true;
-                      } else {
-                        final olderMessage = Message.fromFirestore(messages[index + 1]);
-                        if (!_isSameDay(currentMessage.createdAt, olderMessage.createdAt)) {
-                          needsSeparator = true;
-                        }
+            // メインコンテンツ（ヘッダーとメッセージリスト）
+            Column(
+              children: [
+                _buildHeader(),
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chat_rooms')
+                        .doc(widget.chatRoomId)
+                        .collection('messages')
+                        .orderBy('createdAt', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
                       }
+                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                        return Center(
+                            child: Text('${widget.chatTitle}にメッセージを送信しましょう！',
+                                style: const TextStyle(color: Colors.white)));
+                      }
+                      final messages = snapshot.data!.docs;
+                      return ListView.builder(
+                        // ★★★ 下部に余白を追加 ★★★
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
+                        reverse: true,
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final currentMessage =
+                              Message.fromFirestore(messages[index]);
+                          final isMe =
+                              currentMessage.senderId == _currentUser.uid;
 
-                      final messageBubble = _MessageBubble(
-                        message: currentMessage,
-                        isMe: isMe,
-                        isGroupChat: widget.isGroupChat,
+                          bool needsSeparator = false;
+                          if (index == messages.length - 1) {
+                            // チャットの最初のメッセージ
+                            needsSeparator = true;
+                          } else {
+                            final olderMessage =
+                                Message.fromFirestore(messages[index + 1]);
+                            if (!_isSameDay(currentMessage.createdAt,
+                                olderMessage.createdAt)) {
+                              needsSeparator = true;
+                            }
+                          }
+
+                          final messageBubble = _MessageBubble(
+                            message: currentMessage,
+                            isMe: isMe,
+                            isGroupChat: widget.isGroupChat,
+                          );
+
+                          if (needsSeparator) {
+                            return Column(
+                              children: [
+                                _DateSeparator(date: currentMessage.createdAt),
+                                messageBubble,
+                              ],
+                            );
+                          } else {
+                            return messageBubble;
+                          }
+                        },
                       );
-
-                      if (needsSeparator) {
-                        return Column(
-                          children: [
-                            _DateSeparator(date: currentMessage.createdAt),
-                            messageBubble,
-                          ],
-                        );
-                      } else {
-                        return messageBubble;
-                      }
                     },
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
             ),
-            _buildMessageInputField(),
+            // ★★★ 画面下部に固定する入力欄 ★★★
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildMessageInputField(),
+            ),
           ],
         ),
       ),
@@ -218,16 +237,23 @@ class _TalkPageState extends State<TalkPage> {
   }
 
   Widget _buildMessageInputField() {
+    // このウィジェットはPositionedによって配置される
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        // ★★★ スタイルを微調整 ★★★
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.95),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 24,
+              offset: const Offset(0, -4),
+              spreadRadius: 1,
+            ),
           ],
         ),
         child: Row(
@@ -238,14 +264,23 @@ class _TalkPageState extends State<TalkPage> {
                 decoration: const InputDecoration(
                   hintText: 'メッセージを入力...',
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                 ),
+                style: const TextStyle(fontSize: 16),
                 onSubmitted: (_) => _sendMessage(),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.send, color: Color(0xFF13547a)),
-              onPressed: _sendMessage,
+            Container(
+              margin: const EdgeInsets.only(left: 8),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                onPressed: _sendMessage,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              ),
             ),
           ],
         ),
@@ -258,7 +293,6 @@ class _DateSeparator extends StatelessWidget {
   final DateTime date;
   const _DateSeparator({required this.date});
 
-  // ▼▼▼【変更】当日かどうかを判定するロジックを追加 ▼▼▼
   bool _isSameDay(DateTime dateA, DateTime dateB) {
     return dateA.year == dateB.year &&
         dateA.month == dateB.month &&
@@ -267,7 +301,6 @@ class _DateSeparator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ▼▼▼【変更】今日なら「今日」、それ以外なら日付を表示 ▼▼▼
     final String displayText = _isSameDay(date, DateTime.now())
         ? '今日'
         : DateFormat('M/d (E)', 'ja_JP').format(date);
@@ -293,7 +326,6 @@ class _DateSeparator extends StatelessWidget {
   }
 }
 
-
 class _MessageBubble extends StatelessWidget {
   final Message message;
   final bool isMe;
@@ -311,7 +343,7 @@ class _MessageBubble extends StatelessWidget {
     final color = isMe ? const Color.fromARGB(255, 77, 205, 96) : Colors.white;
     final textColor = isMe ? Colors.white : Colors.black87;
     final showAvatarAndName = !isMe && isGroupChat;
-    
+
     final time = DateFormat('HH:mm').format(message.createdAt);
 
     return Container(

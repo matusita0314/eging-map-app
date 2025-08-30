@@ -1,6 +1,8 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart'; // ▼▼▼ 追加 ▼▼▼
 import 'login_page.dart';
 
 class SignupPage extends StatefulWidget {
@@ -11,68 +13,90 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
-  // 入力されたメールアドレス、パスワード、ユーザー名を管理するための変数
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _usernameController = TextEditingController();
+  bool _isLoading = false;
 
-  // 新規登録処理を実行するメソッド
+  bool _termsViewed = false;       // 利用規約をタップしたか
+  bool _privacyViewed = false;     // プライバシーポリシーをタップしたか
+  bool _isTermsAccepted = false;   // 同意チェックボックスの状態
+
   Future<void> _signUp() async {
-    try {
-      final credential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-            email: _emailController.text,
-            password: _passwordController.text,
-          );
+    // 同意していない場合は処理を中断
+    if (!_isTermsAccepted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('利用規約とプライバシーポリシーに同意してください。')),
+      );
+      return;
+    }
+    
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
 
-      // ユーザー作成成功後、Firestoreにユーザー情報を保存
+    try {
+      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
       if (credential.user != null) {
-        await credential.user!.updateDisplayName(_usernameController.text);
+        await credential.user!.updateDisplayName(_usernameController.text.trim());
         await FirebaseFirestore.instance
             .collection('users')
             .doc(credential.user!.uid)
             .set({
-              'uid': credential.user!.uid,
-              'email': credential.user!.email,
-              'displayName': _usernameController.text.isNotEmpty
-                  ? _usernameController.text
-                  : '名無しさん',
-              'photoUrl': '', // 初期のプロフィール画像URL（空）
-              'createdAt': Timestamp.now(),
-              'hasChangedDisplayName': false, // プロフィール変更フラグ
-              'hasChangedPhoto': false, // プロフィール変更フラグ
-
-              'notificationSettings': {
-                'follow': true,
-                'likes': true, // いいね通知の初期値
-                'saves': true, // 保存通知の初期値
-                'comments': true, // コメント通知の初期値
-              },
-            });
+          'uid': credential.user!.uid,
+          'email': credential.user!.email,
+          'displayName': _usernameController.text.trim().isNotEmpty
+              ? _usernameController.text.trim()
+              : '名無しさん',
+          'photoUrl': '',
+          'createdAt': Timestamp.now(),
+          'hasChangedDisplayName': false,
+          'hasChangedPhoto': false,
+          'notificationSettings': {
+            'follow': true,
+            'likes': true,
+            'saves': true,
+            'comments': true,
+          },
+          'rank': 'beginner',
+          'rankForCurrentMonth': 'beginner',
+        });
       }
       await FirebaseAuth.instance.signOut();
 
-      // 成功した場合、この画面が有効（mounted）であれば、前の画面に戻るなどの処理
       if (mounted) {
-        // ★★★ ログインページに戻り、メッセージを渡す ★★★
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (context) =>
-                const LoginPage(successMessage: '会員登録が完了しました。ログインしてください。'),
+            builder: (context) => const LoginPage(successMessage: '会員登録が完了しました。ログインしてください。'),
           ),
         );
       }
     } on FirebaseAuthException catch (e) {
-      // エラーが発生した場合
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('エラー: ${e.message}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('エラー: ${e.message}'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _launchURL(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.inAppWebView)) {
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$urlString を開けませんでした。')),
+        );
       }
     }
   }
 
-  // ウィジェットが不要になった際に、コントローラーを破棄する
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -81,317 +105,206 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
-  // ここで画面の見た目（UI）を作成
   @override
   Widget build(BuildContext context) {
+    // 登録ボタンが押せるかどうかを判定する変数
+    final isButtonEnabled = _isTermsAccepted && !_isLoading;
+
     return Scaffold(
       body: Container(
         width: double.infinity,
         height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment(0.50, 0.00),
-            end: Alignment(0.50, 1.00),
-            colors: [Color(0xFF94D3D2), Color(0xFF9AAEAE), Color(0xFF9D9D9D)],
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              Color(0xFF13547a),
+              Color(0xFF80d0c7),
+            ],
           ),
         ),
         child: SafeArea(
           child: SingleChildScrollView(
-            child: Column(
-              children: [
-                const SizedBox(height: 59),
-                Text(
-                  '新規会員登録',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 30,
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w700,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                children: [
+                  const SizedBox(height: 60),
+                  const Text(
+                    '新規アカウント登録',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-
-                const SizedBox(height: 104),
-
-                // ユーザー名フィールド
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 41),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(left: 5),
-                        child: Text(
-                          'ユーザー名',
-                          style: TextStyle(
-                            color: const Color(0xFF232222),
-                            fontSize: 18,
-                            fontFamily: 'League Spartan',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        height: 45,
-                        decoration: ShapeDecoration(
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            side: BorderSide(width: 1, color: Colors.white),
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                        child: TextFormField(
-                          controller: _usernameController,
-                          decoration: InputDecoration(
-                            hintStyle: TextStyle(
-                              color: const Color(0xFF232222),
-                              fontSize: 16,
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.w400,
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 48),
-
-                // メールアドレスフィールド
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 41),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(left: 5),
-                        child: Text(
-                          'メールアドレス',
-                          style: TextStyle(
-                            color: const Color(0xFF232222),
-                            fontSize: 18,
-                            fontFamily: 'League Spartan',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        height: 45,
-                        decoration: ShapeDecoration(
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            side: BorderSide(width: 1, color: Colors.white),
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                        child: TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: InputDecoration(
-                            hintStyle: TextStyle(
-                              color: const Color(0xFF391713),
-                              fontSize: 20,
-                              fontFamily: 'League Spartan',
-                              fontWeight: FontWeight.w400,
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 48),
-
-                // パスワードフィールド
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 41),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(left: 5),
-                        child: Text(
-                          'パスワード',
-                          style: TextStyle(
-                            color: const Color(0xFF232222),
-                            fontSize: 18,
-                            fontFamily: 'League Spartan',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        height: 45,
-                        decoration: ShapeDecoration(
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            side: BorderSide(width: 1, color: Colors.white),
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                        child: TextFormField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          decoration: InputDecoration(
-                            hintStyle: TextStyle(
-                              color: const Color(0xFF232222),
-                              fontSize: 16,
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.w400,
-                              letterSpacing: 3.68,
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 25,
-                              vertical: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 34),
-
-                // 利用規約とプライバシーポリシーのテキスト
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 71),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '会員登録するには',
-                          style: TextStyle(
-                            color: const Color(0xFF391713),
-                            fontSize: 8,
-                            fontFamily: 'League Spartan',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        TextSpan(
-                          text: '利用規約',
-                          style: TextStyle(
-                            color: Color.fromARGB(255, 105, 82, 255),
-                            fontSize: 8,
-                            fontFamily: 'League Spartan',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'と',
-                          style: TextStyle(
-                            color: const Color(0xFF391713),
-                            fontSize: 8,
-                            fontFamily: 'League Spartan',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'プライバシーポリシー',
-                          style: TextStyle(
-                            color: Color.fromARGB(255, 105, 82, 255),
-                            fontSize: 8,
-                            fontFamily: 'League Spartan',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'に同意してください。',
-                          style: TextStyle(
-                            color: const Color(0xFF391713),
-                            fontSize: 8,
-                            fontFamily: 'League Spartan',
-                            fontWeight: FontWeight.w700,
-                          ),
+                  const SizedBox(height: 40),
+                  Container(
+                    padding: const EdgeInsets.all(24.0),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-
-                const SizedBox(height: 37),
-
-                // 会員登録ボタン
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(100),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.25),
-                            spreadRadius: 1,
-                            blurRadius: 10,
-                          ),
-                        ],
-                      ),
-                      child: ElevatedButton(
-                        onPressed: _signUp,
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(100),
-                            side: const BorderSide(
-                              color: Colors.white,
-                              width: 0.5,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // ユーザー名
+                        const Text('ユーザー名', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _usernameController,
+                          decoration: InputDecoration(
+                            hintText: 'アプリ内で表示される名前',
+                            prefixIcon: const Icon(Icons.person_outline),
+                            filled: true,
+                            fillColor: Colors.grey.shade100,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
                             ),
                           ),
-                          elevation: 8,
                         ),
-                        child: Ink(
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [
-                                Color(0xFF34369B),
-                                Color(0xFF494E92),
-                                Color(0xFF3EE57B),
-                              ],
+                        const SizedBox(height: 24),
+                        // メールアドレス
+                        const Text('メールアドレス', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: InputDecoration(
+                            hintText: 'example@example.com',
+                            prefixIcon: const Icon(Icons.email_outlined),
+                            filled: true,
+                            fillColor: Colors.grey.shade100,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
                             ),
-                            borderRadius: BorderRadius.circular(100),
                           ),
-                          child: Container(
-                            width: 178.56,
-                            height: 44,
-                            alignment: Alignment.center,
-                            child: Text(
-                              '会員登録',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontFamily: 'Poppins',
-                                fontWeight: FontWeight.w700,
+                        ),
+                        const SizedBox(height: 24),
+                        // パスワード
+                        const Text('パスワード', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            hintText: '6文字以上',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            filled: true,
+                            fillColor: Colors.grey.shade100,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // ▼▼▼ 利用規約とプライバシーポリシーの同意セクション ▼▼▼
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Checkbox(
+                              value: _isTermsAccepted,
+                              onChanged: (bool? value) {
+                                // 規約とポリシーを両方表示済みの場合のみチェックを許可
+                                if (_termsViewed && _privacyViewed) {
+                                  setState(() {
+                                    _isTermsAccepted = value ?? false;
+                                  });
+                                } else {
+                                  // まだ表示していない場合はメッセージを表示
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('先に利用規約とプライバシーポリシーをご確認ください。')),
+                                  );
+                                }
+                              },
+                            ),
+                            Expanded(
+                              child: Text.rich(
+                                TextSpan(
+                                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                                  children: [
+                                    TextSpan(
+                                      text: '利用規約',
+                                      style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
+                                      recognizer: TapGestureRecognizer()
+                                        ..onTap = () async {
+                                          // ▼▼▼ ご自身の利用規約ページのURLに書き換えてください ▼▼▼
+                                          await _launchURL('https://eging-map-app.web.app/terms.html');
+                                          setState(() {
+                                            _termsViewed = true;
+                                          });
+                                        },
+                                    ),
+                                    const TextSpan(text: 'と'),
+                                    TextSpan(
+                                      text: 'プライバシーポリシー',
+                                      style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
+                                      recognizer: TapGestureRecognizer()
+                                        ..onTap = () async {
+                                          await _launchURL('https://eging-map-app.web.app/privacy.html');
+                                          setState(() {
+                                            _privacyViewed = true;
+                                          });
+                                        },
+                                    ),
+                                    const TextSpan(text: 'に同意する'),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        
+                        // 登録ボタン
+                        ElevatedButton(
+                          onPressed: isButtonEnabled ? _signUp : null, // 状態によって有効/無効を切り替え
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF13547a),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            // ボタンが無効な時の色を定義
+                            disabledBackgroundColor: Colors.grey.shade400,
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 24, height: 24,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                                )
+                              : const Text('登録する', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-
-                const SizedBox(height: 50),
-              ],
+                  ),
+                  const SizedBox(height: 32),
+                  // ログイン画面への案内
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('アカウントをお持ちですか？', style: TextStyle(color: Colors.white)),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('ログイン', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

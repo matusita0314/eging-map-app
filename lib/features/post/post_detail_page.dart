@@ -639,6 +639,7 @@ Widget _buildCommentInputField() {
               builder: (context) => MapPage(
                 focusedPostId: widget.post.id,
                 initialFocusLocation: widget.post.location,
+                showAppBarAsOverlay: true, 
               ),
             ));
           },

@@ -173,13 +173,54 @@ exports.checkAndUpdateRank = onDocumentWritten({
     const updateData = { rankInfo: newRankInfo };
     if (newRank !== currentRank) {
       updateData.rank = newRank;
-      console.log(`User ${userId} has been promoted to ${newRank}!`);
+      // ここで rankForCurrentMonth は意図的に更新しない！
+      console.log(`User ${userId} has been promoted to ${newRank}! Monthly rank will update on the 1st.`);
     }
 
     transaction.update(userRef, updateData);
   });
 });
 
+// =================================================================
+// ▼▼▼ 毎月1日に「今月のランク」を更新する関数 ▼▼▼
+// =================================================================
+exports.updateMonthlyRankings = onSchedule({
+  schedule: "0 0 1 * *", // 毎月1日の午前0時0分に実行
+  timeZone: "Asia/Tokyo",
+  region: "asia-northeast1",
+}, async (event) => {
+  console.log("Running monthly user rank update job.");
+  const db = admin.firestore();
+  const usersRef = db.collection("users");
+  const snapshot = await usersRef.get();
+
+  if (snapshot.empty) {
+    console.log("No users found to update.");
+    return null;
+  }
+
+  const batch = db.batch();
+  let updatedCount = 0;
+
+  snapshot.forEach(doc => {
+    const userData = doc.data();
+    // 現在のランクと今月のランクが異なるユーザーのみを対象
+    if (userData.rank !== userData.rankForCurrentMonth) {
+      batch.update(doc.ref, { rankForCurrentMonth: userData.rank });
+      updatedCount++;
+      console.log(`Updating monthly rank for user ${doc.id} to ${userData.rank}`);
+    }
+  });
+
+  if (updatedCount > 0) {
+    await batch.commit();
+    console.log(`Successfully updated monthly rank for ${updatedCount} users.`);
+  } else {
+    console.log("No users needed a monthly rank update.");
+  }
+
+  return null;
+});
 
 // =================================================================
 // ▼▼▼ 2. 投稿作成時のユーザー統計更新 ▼▼▼
@@ -382,21 +423,51 @@ exports.updateUserStatsOnPostDelete = onDocumentDeleted({
   }
 
   const userId = deletedPost.userId;
+  const deletedSize = deletedPost.squidSize || 0;
   const userRef = db.collection("users").doc(userId);
 
   return db.runTransaction(async (transaction) => {
     const userDoc = await transaction.get(userRef);
     if (!userDoc.exists) {
-      console.log(`User ${userId} not found, cannot decrement stats.`);
+      console.log(`User ${userId} not found, cannot update stats.`);
       return;
     }
     
-    const currentTotalCatches = userDoc.data().totalCatches || 0;
-    if (currentTotalCatches > 0) {
-      transaction.update(userRef, {
-        totalCatches: admin.firestore.FieldValue.increment(-1),
-      });
+    const userData = userDoc.data();
+    const currentTotalCatches = userData.totalCatches || 0;
+    const currentMaxSize = userData.maxSize || 0;
+
+    // 1. 総釣果数を1減らす
+    const newTotalCatches = currentTotalCatches > 0 ? currentTotalCatches - 1 : 0;
+    let newMaxSize = currentMaxSize;
+
+    // 2. 削除された投稿が最大サイズだった場合のみ、最大サイズを再計算
+    if (deletedSize >= currentMaxSize) {
+      console.log(`Max size post deleted for user ${userId}. Recalculating max size...`);
+      
+      const postsRef = db.collection("posts");
+      const userPostsQuery = postsRef
+        .where("userId", "==", userId)
+        .orderBy("squidSize", "desc")
+        .limit(1);
+        
+      const postsSnapshot = await userPostsQuery.get();
+      
+      if (postsSnapshot.empty) {
+        // 残りの投稿がなければ最大サイズは0
+        newMaxSize = 0;
+      } else {
+        // 残りの投稿の中で一番大きいサイズを新しい最大サイズとする
+        newMaxSize = postsSnapshot.docs[0].data().squidSize || 0;
+      }
+      console.log(`New max size for user ${userId} is ${newMaxSize}.`);
     }
+
+    // 3. ユーザー情報を更新
+    transaction.update(userRef, {
+      totalCatches: newTotalCatches,
+      maxSize: newMaxSize,
+    });
   });
 });
 
@@ -729,54 +800,109 @@ exports.updateRankingOnJudge = onDocumentUpdated({
   });
 });
 
-
 // =================================================================
-// ▼▼▼ 15.ユーザーのスコアを再計算する共通関数 ▼▼▼
+// ▼▼▼ 15.【新規追加】ユーザーのスコアをルールに基づき再計算する中心関数 ▼▼▼
 // =================================================================
-async function _internalRecalculateRankings(tournamentId) {
-  console.log(`--- Internal ranking calculation started for tournament: ${tournamentId} ---`);
+async function recalculateUserScore(tournamentId, userId) {
+  console.log(`Recalculating score for user ${userId} in tournament ${tournamentId}`);
+  
+  const tournamentRef = db.collection("tournaments").doc(tournamentId);
+  const tournamentSnap = await tournamentRef.get();
+  if (!tournamentSnap.exists) {
+    console.error(`Tournament ${tournamentId} not found.`);
+    return;
+  }
+  const tournamentRule = tournamentSnap.data().rule;
 
-  const tournamentDoc = await db.collection("tournaments").doc(tournamentId).get();
-  if (!tournamentDoc.exists) {
-    // この関数は内部呼び出しなので、HttpsErrorではなく通常のErrorを投げるか、ログ出力に留める
-    console.error(`Tournament with ID ${tournamentId} not found.`);
-    return { success: false, message: "指定された大会が見つかりません。" };
+  // ユーザーの承認済み投稿をすべて取得
+  const postsQuery = tournamentRef.collection("posts")
+    .where("userId", "==", userId)
+    .where("status", "==", "approved");
+  const postsSnapshot = await postsQuery.get();
+
+  let newScore = 0;
+  if (!postsSnapshot.empty) {
+    // ルールに応じてスコアを計算
+    if (tournamentRule.metric === 'SIZE') {
+      // サイズ大会の場合：一番大きいjudgedSizeがスコアになる
+      let maxSize = 0;
+      postsSnapshot.forEach(doc => {
+        const postSize = doc.data().judgedSize || 0;
+        if (postSize > maxSize) {
+          maxSize = postSize;
+        }
+      });
+      newScore = maxSize;
+    } else if (tournamentRule.metric === 'COUNT') {
+      // 匹数大会の場合：judgedCountの合計がスコアになる
+      let totalCount = 0;
+      postsSnapshot.forEach(doc => {
+        totalCount += doc.data().judgedCount || 0;
+      });
+      newScore = totalCount;
+    }
   }
 
-  const rankingsRef = tournamentDoc.ref.collection("rankings");
-  // scoreの降順で並び替え
-  const rankingsQuery = rankingsRef.orderBy("score", "desc");
-  const rankingsSnapshot = await rankingsQuery.get();
+  const userSnap = await db.collection("users").doc(userId).get();
+  const userData = userSnap.exists ? userSnap.data() : {};
+  const userName = userData.displayName || "名無しさん";
+  const userPhotoUrl = userData.photoUrl || "";
 
-  if (rankingsSnapshot.empty) {
-    console.log(`No rankings to update for tournament: ${tournamentId}`);
-    return { success: true, message: "ランキング対象のユーザーがいません。", count: 0 };
-  }
+  // 2. rankingsとentriesへの参照を準備
+  const rankingRef = tournamentRef.collection("rankings").doc(userId);
+  const entryRef = tournamentRef.collection("entries").doc(userId);
 
-  const batch = db.batch();
-  let rank = 1;
-
-  for (const userRankingDoc of rankingsSnapshot.docs) {
-    const userId = userRankingDoc.id;
-    const entryRef = tournamentDoc.ref.collection("entries").doc(userId);
-    // userRankingDocとentryRefの両方に順位を書き込む
-    batch.update(userRankingDoc.ref, { rank: rank });
-    batch.update(entryRef, { currentRank: rank });
-    rank++;
-  }
-
-  await batch.commit();
-  // 大会ドキュメントに最終更新日時を記録
-  await tournamentDoc.ref.update({ lastRankingUpdate: admin.firestore.FieldValue.serverTimestamp() });
-
-  const successMessage = `Successfully updated ${rankingsSnapshot.size} rankings for tournament: ${tournamentId}`;
-  console.log(successMessage);
-  return { success: true, message: successMessage, count: rankingsSnapshot.size };
+  await Promise.all([
+    // rankingsにはスコアとプロフィール情報を書き込む
+    rankingRef.set({
+      score: newScore,
+      userName: userName,
+      userPhotoUrl: userPhotoUrl,
+    }, { merge: true }),
+    
+    // entriesにはスコアを書き込む
+    entryRef.set({
+      currentScore: newScore,
+    }, { merge: true }),
+  ]);
+  console.log(`Score for user ${userId} updated to: ${newScore}`);
 }
 
 
 // =================================================================
-// ▼▼▼ 16.大会への新規投稿時に、投稿制限を処理する関数 ▼▼▼
+// ▼▼▼ 16. ランキング順位を振り直す内部関数（修正） ▼▼▼
+// =================================================================
+async function _internalReorderRanks(tournamentId) {
+  console.log(`--- Reordering ranks for tournament: ${tournamentId} ---`);
+
+  const rankingsRef = db.collection("tournaments").doc(tournamentId).collection("rankings");
+  const rankingsQuery = rankingsRef.orderBy("score", "desc"); // スコアの高い順
+  const rankingsSnapshot = await rankingsQuery.get();
+
+  if (rankingsSnapshot.empty) {
+    console.log(`No rankings to reorder for tournament: ${tournamentId}`);
+    return 0;
+  }
+
+  const batch = db.batch();
+  let rank = 1;
+  rankingsSnapshot.forEach(doc => {
+    batch.update(doc.ref, { rank: rank });
+    const entryRef = db.collection("tournaments").doc(tournamentId).collection("entries").doc(doc.id);
+    batch.update(entryRef, { currentRank: rank });
+    rank++;
+  });
+
+  await batch.commit();
+  await db.collection("tournaments").doc(tournamentId).update({ lastRankingUpdate: admin.firestore.FieldValue.serverTimestamp() });
+
+  console.log(`Successfully reordered ${rankingsSnapshot.size} ranks for tournament ${tournamentId}.`);
+  return rankingsSnapshot.size;
+}
+
+
+// =================================================================
+// ▼▼▼ 17. 大会投稿が承認された時の処理（修正） ▼▼▼
 // =================================================================
 exports.updateScoreOnApproval = onDocumentUpdated({
   document: "tournaments/{tournamentId}/posts/{postId}",
@@ -785,28 +911,26 @@ exports.updateScoreOnApproval = onDocumentUpdated({
   const before = event.data.before.data();
   const after = event.data.after.data();
 
+  // 承認された時だけ実行
   if (before.status !== "pending" || after.status !== "approved") {
     return null;
   }
 
-  // 承認されたユーザーのスコアを再計算
-  await recalculateUserScore(event.params.tournamentId, after.userId);
+  const tournamentId = event.params.tournamentId;
+  const userId = after.userId;
 
-  // ランキング全体を再計算（順位を振り直す）
-  try {
-    // ▼▼▼【修正】新しい内部関数を直接呼び出す ▼▼▼
-    await _internalRecalculateRankings(event.params.tournamentId);
- } catch(error) {
-  console.error(`Error recalculating ranks for ${event.params.tournamentId}:`, error);
- }
+  // 1. 投稿者のスコアを再計算
+  await recalculateUserScore(tournamentId, userId);
+  
+  // 2. ランキング全体を再計算（順位を振り直す）
+  await _internalReorderRanks(tournamentId);
 
   return null;
 });
 
 
-
 // =================================================================
-// ▼▼▼ 17.投稿が削除されたときにスコアを再計算する関数  ▼▼▼
+// ▼▼▼ 18. 大会投稿が削除された時の処理（修正）▼▼▼
 // =================================================================
 exports.onTournamentPostDeleted = onDocumentDeleted({
     document: "tournaments/{tournamentId}/posts/{postId}",
@@ -814,46 +938,26 @@ exports.onTournamentPostDeleted = onDocumentDeleted({
 }, async (event) => {
     const deletedPost = event.data.data();
     if (!deletedPost) return null;
-
-    console.log(`Post deleted for user ${deletedPost.userId}. Recalculating score.`);
     
-    // 投稿者のスコアを再計算
-    await recalculateUserScore(event.params.tournamentId, deletedPost.userId);
-
-    // ランキング全体を再計算（順位を振り直す）
-    try {
-    await _internalRecalculateRankings(event.params.tournamentId);
-  } catch(error) {
-    console.error(`Error recalculating ranks for ${event.params.tournamentId}:`, error);
-  }
+    const tournamentId = event.params.tournamentId;
+    const userId = deletedPost.userId;
+    
+    // 1. 投稿者のスコアを再計算
+    await recalculateUserScore(tournamentId, userId);
+    
+    // 2. ランキング全体を再計算（順位を振り直す）
+    await _internalReorderRanks(tournamentId);
     
     return null;
 });
 
 
-
 // =================================================================
-// ▼▼▼ 18.新しいユーザーが大会に参加した際に、参加者数を更新する ▼▼▼
-// =================================================================
-exports.incrementParticipantCount = onDocumentCreated({
-  document: "tournaments/{tournamentId}/entries/{userId}",
-  region: "asia-northeast1",
-}, async (event) => {
-  const tournamentId = event.params.tournamentId;
-  const tournamentRef = db.collection("tournaments").doc(tournamentId);
-
-  // トランザクションで安全にカウンターを増やす
-  return tournamentRef.update({
-    participantCount: admin.firestore.FieldValue.increment(1)
-  });
-});
-
-
-// =================================================================
-// ▼▼▼ 19.手動で特定大会のランキングを再計算する ▼▼▼
+// ▼▼▼ 19. 【重要】手動でランキングを再計算する関数（大幅修正）▼▼▼
 // =================================================================
 exports.recalculateRankingsManually = onCall({
   region: "asia-northeast1",
+  memory: "512MiB"
 }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError("unauthenticated", "この操作を行うには認証が必要です。");
@@ -864,31 +968,27 @@ exports.recalculateRankingsManually = onCall({
     throw new functions.https.HttpsError("invalid-argument", "tournamentId が指定されていません。");
   }
 
-  // ★★★ 修正点: 新しい内部関数を呼び出すだけにする ★★★
-  const result = await _internalRecalculateRankings(tournamentId);
-
-  // 内部関数からの結果を返す
-  if (!result.success) {
-     throw new functions.https.HttpsError("not-found", result.message);
+  console.log(`--- Manual ranking recalculation requested for tournament: ${tournamentId} ---`);
+  
+  // 1. 大会参加者全員のリストを取得
+  const entriesSnapshot = await db.collection("tournaments").doc(tournamentId).collection("entries").get();
+  if (entriesSnapshot.empty) {
+    return { message: "ランキング対象の参加者がいません。", count: 0 };
   }
-  return { message: result.message, count: result.count };
+  
+  // 2. 全参加者のスコアを順番に再計算
+  for (const entryDoc of entriesSnapshot.docs) {
+    const userId = entryDoc.id;
+    await recalculateUserScore(tournamentId, userId);
+  }
+  
+  // 3. 全員のスコア計算が終わったら、最後に順位を振り直す
+  const count = await _internalReorderRanks(tournamentId);
+
+  const successMessage = `ランキングの集計が完了しました。${count}人の順位が更新されました。`;
+  console.log(successMessage);
+  return { message: successMessage, count: count };
 });
-
-exports.updateTournamentPostLikeCount = onDocumentWritten({
-  document: "tournaments/{tournamentId}/posts/{postId}/likes/{userId}",
-  region: "asia-northeast1",
-}, async (event) => {
-    const tournamentId = event.params.tournamentId;
-    const postId = event.params.postId;
-    const postRef = db.collection("tournaments").doc(tournamentId).collection("posts").doc(postId);
-
-    const likesSnapshot = await postRef.collection("likes").get();
-    const likeCount = likesSnapshot.size;
-
-    return postRef.update({ likeCount: likeCount });
-});
-
-
 
 // =================================================================
 // ▼▼▼ 20.サブ大会のいいねの合計とランキングを計算する関数 ▼▼▼
@@ -972,4 +1072,125 @@ exports.updateLikeCountRankings = onSchedule({
       }
     }
     return null;
+});
+
+// =================================================================
+// ▼▼▼ 21.管理者による手動での景品付与関数 (称号のみ) ▼▼▼
+// =================================================================
+exports.awardPrizesManually = onCall({ region: "asia-northeast1" }, async (request) => {
+  // 1. 認証チェック
+  if (!request.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "認証が必要です。");
+  }
+  // TODO: 本番環境では、カスタムクレーム等で管理者かどうかをチェックしてください
+
+  const { tournamentId, winners } = request.data;
+  if (!tournamentId || !winners) {
+    throw new functions.https.HttpsError("invalid-argument", "必要なデータ（tournamentId, winners）が不足しています。");
+  }
+
+  const db = admin.firestore();
+  const tournamentRef = db.collection("tournaments").doc(tournamentId);
+
+  try {
+    const tournamentDoc = await tournamentRef.get();
+    if (!tournamentDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "対象の大会が見つかりません。");
+    }
+    const tournamentData = tournamentDoc.data();
+    if (tournamentData.prizesAwarded) {
+      throw new functions.https.HttpsError("failed-precondition", "この大会の賞品は授与済みです。");
+    }
+    if (!tournamentData.prizes) {
+      throw new functions.https.HttpsError("failed-precondition", "この大会に賞品が設定されていません。");
+    }
+    
+    const prizes = tournamentData.prizes;
+    const batch = db.batch();
+
+    // 2. winnersオブジェクトをループして、各ユーザーに称号を付与
+    for (const rank in winners) { // rank は '1', '2', '3'
+      const userId = winners[rank];
+      const prizeForRank = prizes[`rank${rank}`];
+
+      if (userId && prizeForRank && prizeForRank.title) {
+          const newTitleAwardRef = db.collection("users").doc(userId).collection("awardedTitles").doc();
+          batch.set(newTitleAwardRef, {
+            title: prizeForRank.title,
+            awardedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+      }
+    }
+
+    // 3. 授与済みフラグを更新
+    batch.update(tournamentRef, { prizesAwarded: true , status: 'finished' });
+
+    await batch.commit();
+
+    return { success: true, message: "称号の授与が完了しました。" };
+  } catch (error) {
+    console.error("手動での賞品授与エラー:", error);
+    throw new functions.https.HttpsError("internal", "サーバーエラーが発生しました。");
+  }
+});
+
+// =================================================================
+// ▼▼▼ 22.毎日定時に大会ステータスを更新する関数 ▼▼▼
+// =================================================================
+exports.updateTournamentStatus = onSchedule({
+  schedule: "24 15 * * *", // 毎日午後2時54分に実行
+  timeZone: "Asia/Tokyo",
+  region: "asia-northeast1",
+}, async (event) => {
+  console.log("Running scheduled tournament status update.");
+  const db = admin.firestore();
+  const now = new Date();
+  
+  // 今日の日付の開始と終了をTimestampで表現
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+  const tournamentsRef = db.collection("tournaments");
+
+  // --- 開始日を迎えた大会を 'pending' から 'ongoing' に更新 ---
+  const pendingTournamentsQuery = tournamentsRef
+    .where("status", "==", "pending")
+    .where("startDate", ">=", todayStart)
+    .where("startDate", "<", todayEnd);
+
+  const pendingSnapshot = await pendingTournamentsQuery.get();
+
+  if (pendingSnapshot.empty) {
+    console.log("No pending tournaments to start today.");
+  } else {
+    const batch = db.batch();
+    pendingSnapshot.forEach(doc => {
+      console.log(`Starting tournament: ${doc.id} - ${doc.data().name}`);
+      batch.update(doc.ref, { status: "ongoing" });
+    });
+    await batch.commit();
+    console.log(`Successfully started ${pendingSnapshot.size} tournaments.`);
+  }
+
+  // --- 終了日を過ぎた大会を 'ongoing' から 'judging' に更新 ---
+  const ongoingTournamentsQuery = tournamentsRef
+    .where("status", "==", "ongoing")
+    .where("endDate", "<", now);
+
+  const ongoingSnapshot = await ongoingTournamentsQuery.get();
+  
+  if (ongoingSnapshot.empty) {
+    console.log("No ongoing tournaments to move to judging status.");
+  } else {
+    const batch = db.batch();
+    ongoingSnapshot.forEach(doc => {
+      // prizesAwardedに関係なく、ステータスを'judging'に変更する
+      console.log(`Moving tournament to judging status: ${doc.id}`);
+      batch.update(doc.ref, { status: "judging" }); 
+    });
+    await batch.commit();
+    console.log(`Successfully moved ${ongoingSnapshot.size} tournaments to judging status.`);
+  }
+
+  return null;
 });

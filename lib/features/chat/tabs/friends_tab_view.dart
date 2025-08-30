@@ -1,11 +1,11 @@
-// lib/features/chat/tabs/friends_tab_view.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../providers/following_provider.dart';
 import '../../account/account.dart';
-import '../../../providers/user_provider.dart'; // userProviderをインポート
+import '../../../providers/user_provider.dart';
+import '../../../widgets/ranked_circle_avatar.dart';
+
 
 class FriendsTabView extends ConsumerWidget {
   const FriendsTabView({super.key});

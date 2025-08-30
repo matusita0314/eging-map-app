@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/initialization_page.dart'; 
 import 'core/navigator_key.dart';
 
-void main() {
+void main(){
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const ProviderScope(child: MyApp()));
 }

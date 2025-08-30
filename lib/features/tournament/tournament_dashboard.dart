@@ -12,10 +12,7 @@ import 'add_tournament_post_page.dart';
 import 'tournament_user_submissions_page.dart';
 import '../account/account.dart';
 import '../../providers/following_provider.dart';
-
-// ★★★ ここからが変更点 ★★★
-
-// --- Riverpod Providerの定義 ---
+import '../../providers/user_provider.dart';
 
 // 1. マイページの「自分のエントリー情報」を取得するProvider
 final myTournamentEntryProvider = StreamProvider.autoDispose.family<DocumentSnapshot, String>((ref, tournamentId) {
@@ -381,147 +378,172 @@ class _MyStatusTabState extends ConsumerState<_MyStatusTab> with AutomaticKeepAl
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
+    super.build(context); // AutomaticKeepAliveClientMixinのために必要
     final currentUser = FirebaseAuth.instance.currentUser!;
     final entryAsync = ref.watch(myTournamentEntryProvider(widget.tournament.id));
     final postsAsync = ref.watch(myTournamentPostsProvider(widget.tournament.id));
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          entryAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Text('エラー: $err'),
-            data: (entryDoc) {
-              if (!entryDoc.exists) {
-                return const Card(
-                  elevation: 4,
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: ListTile(
-                      title: Text('投稿して参戦しましょう！！'),
-                    ),
-                  ),
-                );
-              }
-              final myEntryData = entryDoc.data() as Map<String, dynamic>;
-              if (widget.tournament.rule.metric == 'LIKE_COUNT') {
-                return _buildLikeStatusCard(context, myEntryData);
-              } else {
-                return _buildRankStatusCard(myEntryData);
-              }
-            },
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.add_a_photo),
-            label: const Text('釣果/作品を提出する'),
-            onPressed: () async {
-              final postsQuery = await FirebaseFirestore.instance
-                  .collection('tournaments').doc(widget.tournament.id).collection('posts')
-                  .where('userId', isEqualTo: currentUser.uid)
-                  .where('status', whereIn: ['pending', 'approved'])
-                  .limit(1)
-                  .get();
+    // 現在のユーザーのランク情報を取得する
+    final userAsync = ref.watch(userProvider(currentUser.uid));
 
-              bool alreadySubmitted = postsQuery.docs.isNotEmpty;
-              bool proceed = true;
+    return userAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
+      error: (err, stack) => Center(child: Text('ユーザー情報の読み込みに失敗: $err', style: const TextStyle(color: Colors.white))),
+      data: (userModel) {
+        final userRank = userModel.rankForCurrentMonth;
+        // ユーザーがこの大会に参加資格があるかどうかを判定
+        final isEligible = (userRank == widget.tournament.eligibleRank || widget.tournament.eligibleRank == 'common');
+        
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              entryAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, stack) => Text('エラー: $err'),
+                data: (entryDoc) {
+                  if (!entryDoc.exists) {
+                    return Card(
+                      elevation: 4,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: ListTile(
+                          leading: const Icon(Icons.info_outline),
+                          title: Text(isEligible ? '投稿して大会に参加しましょう！' : 'この大会の参加ランクではありません'),
+                        ),
+                      ),
+                    );
+                  }
+                  final myEntryData = entryDoc.data() as Map<String, dynamic>;
+                  if (widget.tournament.rule.metric == 'LIKE_COUNT') {
+                    return _buildLikeStatusCard(context, myEntryData);
+                  } else {
+                    return _buildRankStatusCard(myEntryData);
+                  }
+                },
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add_a_photo),
+                label: Text(
+                  widget.tournament.status == 'judging' 
+                    ? '投稿受付は終了しました' 
+                    : !isEligible
+                      ? 'この大会には参加できません'
+                      : '釣果/作品を提出する'
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: (widget.tournament.status == 'judging' || !isEligible) ? Colors.grey : null,
+                ),
+                onPressed: (widget.tournament.status == 'judging' || !isEligible)
+                  ? null 
+                  : () async {
+                      final postsQuery = await FirebaseFirestore.instance
+                          .collection('tournaments').doc(widget.tournament.id).collection('posts')
+                          .where('userId', isEqualTo: currentUser.uid)
+                          .where('status', whereIn: ['pending', 'approved'])
+                          .limit(1)
+                          .get();
 
-              if (alreadySubmitted &&
-                  widget.tournament.rule.submissionLimit == 'SINGLE_OVERWRITE' &&
-                  context.mounted) {
-                proceed = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('投稿の更新'),
-                    content: const Text(
-                        '既に提出済みの投稿があります。新しい投稿が現在の記録を上回った場合、古い投稿は削除され、新しい記録に更新されます。よろしいですか？'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('キャンセル')),
-                      TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('OK')),
+                      bool alreadySubmitted = postsQuery.docs.isNotEmpty;
+                      bool proceed = true;
+
+                      if (alreadySubmitted &&
+                          widget.tournament.rule.submissionLimit == 'SINGLE_OVERWRITE' &&
+                          context.mounted) {
+                        proceed = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('投稿の更新'),
+                            content: const Text(
+                                '既に提出済みの投稿があります。新しい投稿が現在の記録を上回った場合、古い投稿は削除され、新しい記録に更新されます。よろしいですか？'),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.of(context).pop(false),
+                                  child: const Text('キャンセル')),
+                              TextButton(
+                                  onPressed: () => Navigator.of(context).pop(true),
+                                  child: const Text('OK')),
+                            ],
+                          ),
+                        ) ?? false;
+                      }
+
+                      if (proceed && context.mounted) {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (context) => TournamentSubmissionPage(tournament: widget.tournament),
+                        ));
+                      }
+                },
+              ),
+              const Divider(height: 48),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(30.0),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
                     ],
                   ),
-                ) ?? false;
-              }
-
-              if (proceed && context.mounted) {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => TournamentSubmissionPage(tournament: widget.tournament),
-                ));
-              }
-            },
-          ),
-          const Divider(height: 48),
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(30.0), // 丸い角
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                  child: const Text(
+                    'あなたが提出した投稿',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF13547a),
+                    ),
                   ),
-                ],
-              ),
-              child: const Text(
-                'あなたが提出した投稿',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF13547a), // テキスト色を変更
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          postsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Text('エラー: $err'),
-            data: (postsSnapshot) {
-              if (postsSnapshot.docs.isEmpty) {
-                return const Center(child: Text('まだ投稿がありません。'));
-              }
-              final postDocs = postsSnapshot.docs;
-              return ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: postDocs.length,
-                itemBuilder: (context, index) {
-                  final postDoc = postDocs[index];
-                  final postData = postDoc.data() as Map<String, dynamic>;
-                  final status = postData['status'] as String? ?? 'pending';
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Stack(
-                      children: [
-                        _TournamentFeedCard(
-                          tournament: widget.tournament,
-                          post: postDoc,
-                          showAuthorInfo: false,
+              const SizedBox(height: 16),
+              postsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, stack) => Text('エラー: $err'),
+                data: (postsSnapshot) {
+                  if (postsSnapshot.docs.isEmpty) {
+                    return const Center(child: Text('まだ投稿がありません。', style: TextStyle(color: Colors.white)));
+                  }
+                  final postDocs = postsSnapshot.docs;
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: postDocs.length,
+                    itemBuilder: (context, index) {
+                      final postDoc = postDocs[index];
+                      final postData = postDoc.data() as Map<String, dynamic>;
+                      final status = postData['status'] as String? ?? 'pending';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Stack(
+                          children: [
+                            _TournamentFeedCard(
+                              tournament: widget.tournament,
+                              post: postDoc,
+                              showAuthorInfo: false,
+                            ),
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: _buildStatusChip(status),
+                            ),
+                          ],
                         ),
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: _buildStatusChip(status),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   );
                 },
-              );
-            },
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

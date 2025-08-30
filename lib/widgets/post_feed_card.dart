@@ -59,7 +59,7 @@ class PostFeedCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                            if (showAuthorInfo)
+              if (showAuthorInfo)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
                   child: Row(

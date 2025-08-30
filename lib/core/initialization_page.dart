@@ -4,9 +4,9 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; 
 import 'auth_wrapper.dart';
-import '../features/onboarding/onboarding_page.dart';
+// import '../features/onboarding/onboarding_page.dart'; // 不要になるため削除
 
 import 'fcm_service.dart';
 import 'firebase_options.dart';
@@ -43,30 +43,26 @@ class _InitializationPageState extends State<InitializationPage> {
   }
 
   Future<void> _initialize() async {
-    // 1. Firebase等のサービス初期化 (既存のコード)
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.debug,
-      appleProvider: AppleProvider.debug,
-    );
+    // Web以外のモバイル環境でのみApp Checkを有効化する
+    if (!kIsWeb) {
+      // この activate 処理によって、デバッグトークンがコンソールに出力されます
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.debug,
+        appleProvider: AppleProvider.debug,
+      );
+    }
     final fcmService = FcmService();
     await fcmService.createNotificationChannel();
     await fcmService.initializeLocalNotifications();
     await FirebaseMessaging.instance.requestPermission();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     _setupFcmListeners();
-    // 2. 初回起動かどうかを判定
-    final prefs = await SharedPreferences.getInstance();
-    final bool hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
 
-    // 3. 判定結果に応じて次に表示するページを決定
-    final Widget destination = hasSeenOnboarding
-        ? const AuthWrapper()     
-        : const OnboardingPage();
-
+    // 2. ★★★ 変更点: オンボーディング判定を削除し、常にAuthWrapperへ遷移 ★★★
     if (mounted) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => destination), // 行き先を動的に変更
+        MaterialPageRoute(builder: (context) => const AuthWrapper()),
       );
     }
   }

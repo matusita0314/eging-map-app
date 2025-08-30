@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EGI-ONE GP 2025 - NUMBER CONTEST</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Reggae+One&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --base-color: #1a1a0f; /* ダークオリーブ */
+            --primary-color: #dfff00; /* ネオンイエロー */
+            --accent-color: #00ff7f; /* ライムグリーン */
+            --text-color: #ffffff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Noto Sans JP', sans-serif; margin: 0; background-color: var(--base-color);
+            color: var(--text-color); overflow-x: hidden; line-height: 1.6;
+        }
+        .container { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+        section { padding: 60px 0; position: relative; }
+        h2 {
+            font-family: 'Reggae One', cursive; font-size: clamp(2rem, 5vw, 3rem); text-align: center;
+            margin-bottom: 40px; font-weight: 900; color: var(--primary-color);
+            text-shadow: 0 0 10px var(--primary-color), 0 0 20px var(--accent-color);
+        }
+        header {
+            display: flex; align-items: center; justify-content: center; text-align: center; min-height: 100vh;
+            background: linear-gradient(135deg, var(--base-color) 0%, #2a2a1a 50%, var(--base-color) 100%);
+            position: relative; overflow: hidden;
+        }
+        header::before {
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(223, 255, 0, 0.1) 0%, transparent 50%);
+            animation: rotate 20s linear infinite; z-index: 1;
+        }
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .hero-content { z-index: 2; padding: 20px; }
+        .hero-title {
+            font-family: 'Reggae One', cursive; font-size: clamp(2.5rem, 8vw, 4.5rem); font-weight: 900;
+            margin: 0; line-height: 1.2; background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+        .hero-subtitle {
+            font-size: clamp(1rem, 3vw, 1.5rem); margin: 20px 0 40px; text-shadow: 0 0 8px var(--base-color);
+        }
+        .cta-button {
+            display: inline-block; background: var(--primary-color); color: var(--base-color);
+            padding: clamp(12px, 3vw, 18px) clamp(30px, 6vw, 50px); font-size: clamp(1rem, 2.5vw, 1.3rem);
+            font-weight: 700; text-decoration: none; border-radius: 50px; transition: all 0.3s ease;
+            box-shadow: 0 0 20px var(--primary-color); animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 20px var(--primary-color); }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px var(--primary-color), 0 0 10px var(--accent-color); }
+            100% { transform: scale(1); box-shadow: 0 0 20px var(--primary-color); }
+        }
+        .rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .rule-card {
+            background: rgba(255, 255, 255, 0.05); border: 1px solid var(--primary-color);
+            padding: 20px; border-radius: 15px; backdrop-filter: blur(5px); text-align: center;
+        }
+        .rule-card h3 { color: var(--primary-color); font-size: clamp(1.2rem, 3vw, 1.5rem); margin-top: 0; }
+        .prize-podium { display: flex; justify-content: center; align-items: flex-end; gap: 15px; flex-wrap: wrap; }
+        .prize-item {
+            background: linear-gradient(145deg, #3a3a2a, var(--base-color)); border-radius: 10px; padding: 15px;
+            text-align: center; width: 100%; max-width: 250px; min-width: 200px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .prize-item.first-place { order: 2; max-width: 280px; border: 2px solid gold; transform: translateY(-10px); }
+        .prize-item.second-place { order: 1; border: 2px solid silver; }
+        .prize-item.third-place { order: 3; border: 2px solid #cd7f32; }
+        .prize-item .prize-image {
+            width: 100%; height: 120px; background: linear-gradient(45deg, #333, #555);
+            border-radius: 5px; margin-bottom: 15px; display: flex; align-items: center; justify-content: center;
+            font-size: 0.9rem; color: #999;
+        }
+        .prize-rank { font-family: 'Reggae One', cursive; font-size: clamp(1.5rem, 4vw, 2rem); font-weight: bold; }
+        .first-place .prize-rank { color: gold; }
+        .second-place .prize-rank { color: silver; }
+        .third-place .prize-rank { color: #cd7f32; }
+        footer { background: #000; text-align: center; padding: 30px 20px; margin-top: 40px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="hero-content">
+            <h1 class="hero-title">NUMBER CONTEST</h1>
+            <p class="hero-subtitle">質より量。とにかく釣りまくり、頂点に立て。</p>
+            <a href="javascript:void(0)" onclick="EntryButton.postMessage('entry');" class="cta-button">今すぐエントリー</a>
+        </div>
+    </header>
+
+    <section id="concept">
+        <div class="container">
+            <h2>CONCEPT</h2>
+            <p style="text-align: center; font-size: clamp(1rem, 2.5vw, 1.2rem); max-width: 700px; margin: 0 auto 40px;">
+                サイズは関係ない。期間中に最も多くのイカを釣り上げた者が勝者となる、シンプルかつ過酷な持久戦。あなたの体力と情熱が試される。
+            </p>
+        </div>
+    </section>
+
+    <section id="rules">
+        <div class="container">
+            <h2>RULES</h2>
+            <div class="rules-grid">
+                <div class="rule-card">
+                    <h3>【対象】</h3>
+                    <p>陸から釣ったイカ全般。アオリイカでなくともカウント対象となる。</p>
+                </div>
+                <div class="rule-card">
+                    <h3>【期間】</h3>
+                    <p>2025年10月1日 0:00 〜<br>2025年10月31日 23:59</p>
+                </div>
+                <div class="rule-card">
+                    <h3>【登録】</h3>
+                    <p>釣果1杯につき1投稿。アプリのカメラで撮影し、釣果を証明すること。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="prizes">
+        <div class="container">
+            <h2>PRIZES</h2>
+            <div class="prize-podium">
+                <div class="prize-item second-place">
+                    <div class="prize-rank">2nd</div>
+                    <div class="prize-image">COOLER BOX</div>
+                    <h3>準優勝</h3>
+                    <p>高機能クーラーボックス + 消耗品セット</p>
+                </div>
+                <div class="prize-item first-place">
+                    <div class="prize-rank">1st</div>
+                    <div class="prize-image">GIFT CARD</div>
+                    <h3>優勝</h3>
+                    <p>釣具店で使えるギフトカード10万円分</p>
+                </div>
+                <div class="prize-item third-place">
+                    <div class="prize-rank">3rd</div>
+                    <div class="prize-image">EGI CASE</div>
+                    <h3>3位</h3>
+                    <p>大容量エギケース + 人気エギ10本セット</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="entry">
+        <div class="container" style="text-align: center;">
+            <h2>数こそ、力。</h2>
+            <a href="javascript:void(0)" onclick="EntryButton.postMessage('entry');" class="cta-button">終わらない祭りに、参加する</a>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2025 EGI-ONE GP 運営事務局</p>
+    </footer>
+
+</body>
+</html>

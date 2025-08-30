@@ -16,7 +16,7 @@ class ChallengePage extends StatefulWidget {
 class _ChallengePageState extends State<ChallengePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  final List<String> _ranks = ['beginner', 'amateur', 'pro'];
+  final List<String> _ranks = ['ビギナー', 'アマチュア', 'プロ'];
 
   @override
   void initState() {

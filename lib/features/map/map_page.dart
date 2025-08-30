@@ -12,10 +12,20 @@ import '../../widgets/post_bottom_sheet.dart';
 import '../post/post_detail_page.dart';
 import '../../widgets/squid_loading_indicator.dart';
 
+enum DateRangeOption { oneWeek, oneMonth, threeMonths, oneYear, allTime }
+
 class MapPage extends StatefulWidget {
   final LatLng? initialFocusLocation;
   final String? focusedPostId;
-  const MapPage({super.key, this.initialFocusLocation, this.focusedPostId});
+  // ▼▼▼ AppBarを表示するかどうかを外部から受け取るためのプロパティを追加 ▼▼▼
+  final bool showAppBarAsOverlay;
+
+  const MapPage({
+    super.key,
+    this.initialFocusLocation,
+    this.focusedPostId,
+    this.showAppBarAsOverlay = false, // デフォルトは非表示
+  });
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -40,7 +50,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   bool _isDarkMap = false;
   bool _didRunInitialSetup = false;
   double _minSquidSize = 0;
-  double _dateRangeInDays = 7.0;
+  
+  DateRangeOption _selectedDateRange = DateRangeOption.oneWeek;
+  
   MapType _currentMapType = MapType.normal;
   Timer? _filterDebounceTimer;
   String? _lastQueryHash;
@@ -214,8 +226,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    print("--- MapPage initState ---");
-
     if (widget.initialFocusLocation != null) {
       _currentPosition = widget.initialFocusLocation;
       _isLoading = false; 
@@ -231,7 +241,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           .then((doc) {
         if (doc.exists) {
           final post = Post.fromFirestore(doc);
-          // 取得した投稿をキャッシュに直接追加する
           _postsCache[post.id] = post;
           if (_iconsLoaded) {
             _updateMarkersFromCache();
@@ -239,7 +248,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         }
       });
     }
-    _initializePostsStream(); // 通常のストリームも開始
+    _initializePostsStream();
   }
 
   @override
@@ -258,6 +267,36 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  void _initializePostsStream() {
+    final queryHash = '${_minSquidSize}_${_selectedDateRange.name}';
+    if (_lastQueryHash == queryHash) return;
+    _lastQueryHash = queryHash;
+    _postsSubscription?.cancel();
+
+    final startDate = _getStartDateForOption(_selectedDateRange);
+
+    Query query = FirebaseFirestore.instance.collection('posts');
+    
+    if (startDate != null) {
+      query = query.where('createdAt', isGreaterThanOrEqualTo: startDate);
+    }
+    if (_minSquidSize > 0) {
+      query = query.where('squidSize', isGreaterThanOrEqualTo: _minSquidSize);
+    }
+    _postsSubscription = query.snapshots().listen(_handlePostsSnapshot);
+  }
+
+  DateTime? _getStartDateForOption(DateRangeOption option) {
+    final now = DateTime.now();
+    switch (option) {
+      case DateRangeOption.oneWeek: return now.subtract(const Duration(days: 7));
+      case DateRangeOption.oneMonth: return now.subtract(const Duration(days: 30));
+      case DateRangeOption.threeMonths: return now.subtract(const Duration(days: 90));
+      case DateRangeOption.oneYear: return now.subtract(const Duration(days: 365));
+      case DateRangeOption.allTime: return null;
+    }
+  }
+  
   Future<void> _loadCustomIcons() async {
     try {
       final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
@@ -297,24 +336,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     }
   }
 
-  void _initializePostsStream() {
-    final queryHash = '${_minSquidSize}_$_dateRangeInDays';
-    if (_lastQueryHash == queryHash) return;
-    _lastQueryHash = queryHash;
-    _postsSubscription?.cancel();
-
-    final startDate = DateTime.now().subtract(Duration(days: _dateRangeInDays.round()));
-    Query query = FirebaseFirestore.instance.collection('posts').where('createdAt', isGreaterThanOrEqualTo: startDate);
-    if (_minSquidSize > 0) {
-      query = query.where('squidSize', isGreaterThanOrEqualTo: _minSquidSize);
-    }
-    _postsSubscription = query.snapshots().listen(_handlePostsSnapshot);
-  }
-
-  // 🔥 スナップショット処理を最適化
   void _handlePostsSnapshot(QuerySnapshot snapshot) {
-    if (!mounted ) return;
-    if (!_iconsLoaded || _isUpdating) return;
+    if (!mounted || !_iconsLoaded || _isUpdating) return;
     _isUpdating = true;
     final changedPosts = <String, Post>{};
     final deletedPostIds = <String>{};
@@ -336,10 +359,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     Future.delayed(_updateThrottle, () { _isUpdating = false; });
   }
 
-  // 🔥 キャッシュからマーカーを効率的に更新
   void _updateMarkersFromCache() {
     if (!mounted) return;
-
     final newMarkers = <Marker>{};
     for (final post in _postsCache.values) {
       newMarkers.add(_createMarkerFromPost(post));
@@ -364,11 +385,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           ? (_tappedSquidIcon ?? BitmapDescriptor.defaultMarker) 
           : (_squidIcon ?? BitmapDescriptor.defaultMarker),
       zIndex: isFocused ? 1.0 : 0.0,
-      onTap: () {
-        setState(() {
-          _selectedPost = post;
-        });
-      },
+      onTap: () => setState(() => _selectedPost = post),
     );
   }
 
@@ -378,25 +395,17 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   }
 
   Future<void> _toggleMapStyle() async {
-    // 現在の状態を反転させる
     final newIsDark = !_isDarkMap;
-    // スタイルを適用する文字列を決定（ダークモードOFFならnull）
     final style = newIsDark ? _darkMapStyle : null;
 
     try {
       final controller = await _controller.future;
-      // setMapStyleに文字列またはnullを渡す
       await controller.setMapStyle(style);
-      // 成功したら状態を更新
       if (mounted) {
-        setState(() {
-          _isDarkMap = newIsDark;
-        });
+        setState(() => _isDarkMap = newIsDark);
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('マップスタイルの適用に失敗しました。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('マップスタイルの適用に失敗しました。')));
     }
   }
 
@@ -437,9 +446,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     } catch (e) {
       print('位置情報の取得中にエラーが発生しました: $e');
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -459,7 +466,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   void _onMapTapped(LatLng location) {
     setState(() {
-      // 新規投稿用のマーカー以外の状態は変更しない
       _markers.removeWhere((m) => m.markerId.value == 'tapped_location');
       _tappedMarker = Marker(
         markerId: const MarkerId('tapped_location'),
@@ -477,7 +483,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       );
       return;
     }
-
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => AddPostPage(location: _tappedMarker!.position),
@@ -485,7 +490,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     );
   }
 
-  // 🔥 デバウンス付きフィルター更新
   void _updateFilterWithDebounce() {
     _filterDebounceTimer?.cancel();
     _filterDebounceTimer = Timer(const Duration(milliseconds: 300), () {
@@ -493,46 +497,404 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     });
   }
 
-  void _showMapTypeDialog() {
-    showDialog(
+  Future<void> _onMapCreated(GoogleMapController controller) async {
+    if (!_controller.isCompleted) {
+      _controller.complete(controller);
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        heroTag: null,
+        onPressed: _onAddPostButtonPressed,
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
+      ),
+      body: _isLoading
+          ? const SquidLoadingIndicator()
+          : Stack(
+              children: [
+                GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _currentPosition ?? _initialPosition,
+                    zoom: 12.0,
+                  ),
+                  onMapCreated: _onMapCreated,
+                  onTap: _onMapTapped,
+                  markers: _markers,
+                  myLocationEnabled: false,
+                  myLocationButtonEnabled: false,
+                  mapType: _currentMapType,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                ),
+                
+                // ▼▼▼ widget.showAppBarAsOverlay を使ってAppBarの表示を制御 ▼▼▼
+                if (widget.showAppBarAsOverlay)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: Container(
+                        margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.95),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.arrow_back, color: Color(0xFF13547a)),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                            const Expanded(
+                              child: Text(
+                                '釣果ポイント',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF13547a),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 48),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                _buildFilterButtonsOverlay(),
+
+                if (_selectedPost != null)
+                  NotificationListener<DraggableScrollableNotification>(
+                    onNotification: (notification) {
+                      if (notification.extent <= 0.15) {
+                        setState(() => _selectedPost = null);
+                      }
+                      return true;
+                    },
+                    child: DraggableScrollableSheet(
+                      initialChildSize: 0.35,
+                      minChildSize: 0.15,
+                      maxChildSize: 0.8,
+                      builder: (context, scrollController) {
+                        return PostBottomSheet(
+                          post: _selectedPost!,
+                          scrollController: scrollController,
+                          onNavigateToDetail: () {
+                            Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => PostDetailPage(post: _selectedPost!),
+                            ));
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildFilterButtonsOverlay() {
+  return Positioned(
+    bottom: 28,
+    left: 0,  // 画面の左端から
+    right: 80, // 画面の右端まで領域を確保
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center, // 子要素であるボタン群を中央に配置
+      children: [
+        _buildFilterButton(
+          icon: Icons.date_range_outlined,
+          label: _getLabelForDateOption(_selectedDateRange),
+          onPressed: _showDateRangeSheet,
+        ),
+        _buildFilterButton(
+          icon: Icons.straighten_outlined,
+          label: 'サイズ',
+          onPressed: _showSizeFilterSheet,
+        ),
+        _buildFilterButton(
+          icon: _currentMapType == MapType.satellite
+              ? Icons.map_outlined
+              : Icons.satellite_alt_outlined,
+          // labelを渡さないことでアイコンのみのボタンになる
+          onPressed: _showMapTypeDialog,
+        ),
+      ],
+    ),
+  );
+}
+
+  Widget _buildFilterButton({
+    required IconData icon,
+    String? label,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 20, color: const Color(0xFF13547a)),
+                if (label != null && label.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF13547a),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDateRangeSheet() {
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext context) {
-        // ダイアログ内の状態を管理するためにStatefulBuilderを使用
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16.0),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('表示期間', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Wrap(
+                alignment: WrapAlignment.spaceEvenly,
+                spacing: 8.0,
+                children: DateRangeOption.values.map((option) {
+                  final isSelected = _selectedDateRange == option;
+                  return ChoiceChip(
+                    label: Text(_getLabelForDateOption(option)),
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() => _selectedDateRange = option);
+                      Navigator.pop(context);
+                      _updateFilterWithDebounce();
+                    },
+                    backgroundColor: Colors.grey[200],
+                    selectedColor: const Color(0xFF13547a),
+                    showCheckmark: false,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _getLabelForDateOption(DateRangeOption option) {
+    switch (option) {
+      case DateRangeOption.oneWeek: return '1週間';
+      case DateRangeOption.oneMonth: return '1ヶ月';
+      case DateRangeOption.threeMonths: return '3ヶ月';
+      case DateRangeOption.oneYear: return '1年';
+      case DateRangeOption.allTime: return 'すべて';
+    }
+  }
+
+  void _showSizeFilterSheet() {
+    double tempMinSize = _minSquidSize;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('表示設定'),
-              content: Column(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Divider(),
-                  const Text(
-                    '地図タイプ',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  Container(
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  _buildMapTypeOption(MapType.normal, '通常', Icons.map),
-                  _buildMapTypeOption(MapType.satellite, '衛星', Icons.satellite),
-                  const Divider(),
+                  const SizedBox(height: 24),
+                  Text(
+                    '最小サイズ: ${tempMinSize.round()} cm',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: const Color(0xFF13547a),
+                      inactiveTrackColor: const Color(0xFF80d0c7).withOpacity(0.5),
+                      thumbColor: const Color(0xFF13547a),
+                      overlayColor: const Color(0xFF13547a).withOpacity(0.2),
+                    ),
+                    child: Slider(
+                      value: tempMinSize,
+                      min: 0,
+                      max: 70,
+                      divisions: 14,
+                      label: '${tempMinSize.round()} cm',
+                      onChanged: (double value) => setModalState(() => tempMinSize = value),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      OutlinedButton(
+                        child: const Text('リセット'),
+                        onPressed: () {
+                          setState(() => _minSquidSize = 0);
+                          Navigator.pop(context);
+                          _updateFilterWithDebounce();
+                        },
+                      ),
+                      const Spacer(),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF13547a), foregroundColor: Colors.white),
+                        child: const Text('適用する'),
+                        onPressed: () {
+                          setState(() => _minSquidSize = tempMinSize);
+                          Navigator.pop(context);
+                          _updateFilterWithDebounce();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showMapTypeDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('表示設定', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  ToggleButtons(
+                    isSelected: [_currentMapType == MapType.normal, _currentMapType == MapType.satellite],
+                    onPressed: (int index) {
+                      setModalState(() {
+                        setState(() => _currentMapType = index == 0 ? MapType.normal : MapType.satellite);
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    selectedColor: Colors.white,
+                    fillColor: const Color(0xFF13547a),
+                    children: const [
+                      Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: Row(children: [Icon(Icons.map_outlined), SizedBox(width: 8), Text('通常')])),
+                      Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: Row(children: [Icon(Icons.satellite_alt_outlined), SizedBox(width: 8), Text('衛星')])),
+                    ],
+                  ),
+                  const Divider(height: 24),
                   SwitchListTile(
                     title: const Text('ダークモード'),
                     secondary: const Icon(Icons.dark_mode_outlined),
                     value: _isDarkMap,
-                    onChanged: (newValue) {
-                      // スタイルを切り替えてからダイアログを閉じる
-                      _toggleMapStyle().then((_) {
-                        // ダイアログ内のスイッチ表示を即時更新
-                        setDialogState(() {});
-                      });
-                    },
+                    onChanged: (newValue) => _toggleMapStyle().then((_) => setModalState(() {})),
+                    activeColor: const Color(0xFF13547a),
                   ),
+                  const SizedBox(height: 16),
                 ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('閉じる'),
-                ),
-              ],
             );
           },
         );
@@ -544,271 +906,10 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
-      trailing: _currentMapType == type
-          ? const Icon(Icons.check, color: Colors.blue)
-          : null,
+      trailing: _currentMapType == type ? const Icon(Icons.check, color: Colors.blue) : null,
       onTap: () {
-        setState(() {
-          _currentMapType = type;
-        });
+        setState(() => _currentMapType = type);
         Navigator.of(context).pop();
-      },
-    );
-  }
-
-  Future<void> _onMapCreated(GoogleMapController controller) async {
-    if (!_controller.isCompleted) {
-      _controller.complete(controller);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-
-    final bool canPop = Navigator.canPop(context);
-
-    return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        heroTag: null,
-        onPressed: _onAddPostButtonPressed,
-        child: const Icon(Icons.add),
-      ),
-      body: _isLoading
-          ? const SquidLoadingIndicator()
-          : Stack(
-        children: [
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _currentPosition ?? _initialPosition,
-              zoom: 12.0,
-            ),
-            onMapCreated: _onMapCreated,
-            onTap: _onMapTapped,
-            markers: _markers,
-            myLocationEnabled: false,
-            myLocationButtonEnabled: false,
-            mapType: _currentMapType,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-          ),
-
-          if (canPop)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 15, 16, 0),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    // 戻るボタン
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Color(0xFF13547a)),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    // タイトル
-                    const Expanded(
-                      child: Text(
-                        '釣果ポイント',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF13547a),
-                        ),
-                      ),
-                    ),
-                    // 右側のスペース（戻るボタンとのバランスをとるため）
-                    const SizedBox(width: 48),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          
-          _buildFilterChips(),
-          _buildDateRangeSlider(),
-          _buildMapTypeButton(),
-          
-          if (_selectedPost != null)
-            // ウィジェットを画面外にドラッグして閉じる操作を検知
-            NotificationListener<DraggableScrollableNotification>(
-              onNotification: (notification) {
-                // 最小サイズ(0.15)より小さくなったら閉じる
-                if (notification.extent <= 0.15) {
-                  setState(() {
-                    _selectedPost = null;
-                  });
-                }
-                return true;
-              },
-              child: DraggableScrollableSheet(
-                initialChildSize: 0.35, // 初期表示の高さ (35%)
-                minChildSize: 0.15,      // 最小の高さ (15%)
-                maxChildSize: 0.8,       // 最大の高さ (80%)
-                builder: (context, scrollController) {
-                  return PostBottomSheet(
-                    post: _selectedPost!,
-                    scrollController: scrollController, // 必須：中のリストと連携させる
-                    onNavigateToDetail: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => PostDetailPage(post: _selectedPost!),
-                      ));
-                    },
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMapTypeButton() {
-    return Positioned(
-      bottom: 120,
-      right: 10,
-      child: Container(  // Containerを追加
-      width: 60,      // 希望のサイズに調整
-      height: 60,     // 希望のサイズに調整
-      child: FloatingActionButton(
-        heroTag: null,
-        mini: true,
-        onPressed: _showMapTypeDialog,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black54,
-        tooltip: '表示設定',
-        child: Icon(
-          _currentMapType == MapType.satellite ? Icons.map : Icons.satellite,
-          size: 35,  // アイコンサイズも調整
-        ),
-      ),
-    ),
-    );
-  }
-
-  Widget _buildFilterChips() {
-  return Positioned(
-    bottom: 200,
-    right: 10,
-    child: Container(
-      width: 60,  // サイズを指定
-      height: 60, // 幅と高さを同じに
-      child: FloatingActionButton(
-        heroTag: null,
-        elevation: 6,
-        backgroundColor: Colors.white,
-        mini: true,
-        onPressed: _showSizeFilterSheet,
-        child: const Icon(
-          Icons.straighten,
-          size: 35,  // アイコンサイズを調整
-          color: Colors.black54,
-        ),
-      ),
-    ),
-  );
-}
-
-  Widget _buildDateRangeSlider() {
-    return Positioned(
-      bottom: 10,
-      left: 10,
-      right: 10,
-      child: Card(
-        elevation: 4,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('表示期間: 過去 ${_dateRangeInDays.round()} 日間'),
-              Slider(
-                value: _dateRangeInDays,
-                min: 1,
-                max: 30,
-                divisions: 29,
-                label: '${_dateRangeInDays.round()}日',
-                onChanged: (double value) {
-                  setState(() {
-                    _dateRangeInDays = value;
-                  });
-                  _updateFilterWithDebounce();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showSizeFilterSheet() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            return Container(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'イカの最小サイズ: ${_minSquidSize.round()} cm',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  Slider(
-                    value: _minSquidSize,
-                    min: 0,
-                    max: 50,
-                    divisions: 10,
-                    label: '${_minSquidSize.round()} cm',
-                    onChanged: (double value) {
-                      setModalState(() {
-                        _minSquidSize = value;
-                      });
-                    },
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        child: const Text('リセット'),
-                        onPressed: () {
-                          setState(() => _minSquidSize = 0);
-                          Navigator.pop(context);
-                          _updateFilterWithDebounce();
-                        },
-                      ),
-                      ElevatedButton(
-                        child: const Text('適用'),
-                        onPressed: () {
-                          setState(() {});
-                          Navigator.pop(context);
-                          _updateFilterWithDebounce();
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
       },
     );
   }

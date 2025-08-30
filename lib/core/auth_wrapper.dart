@@ -17,6 +17,14 @@ class AuthWrapper extends ConsumerWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          print("【デバッグ】2. 認証状態を確認中...");
+        } else if (snapshot.hasData) {
+          print("【デバッグ】2. ログイン状態を検知！データ読み込み画面へ。");
+        } else {
+          print("【デバッグ】2. 未ログイン状態を検知。ログインページへ。");
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
           // 認証状態の確認中は、カスタムローディングを表示
           return const SquidLoadingIndicator();
         }
@@ -48,7 +56,6 @@ class _DataLoadingAndRedirectState extends ConsumerState<_DataLoadingAndRedirect
   @override
   void initState() {
     super.initState();
-    // initStateでは、ref を使わない処理のみを実行します
     _fcmService.saveTokenToFirestore();
   }
 
@@ -56,9 +63,12 @@ class _DataLoadingAndRedirectState extends ConsumerState<_DataLoadingAndRedirect
   Widget build(BuildContext context) {
     // ▼▼▼【修正】ref.listen を build メソッド内に移動 ▼▼▼
     // ref.listen はUIの再構築は行わず、状態変化を監視して特定の処理（ここでは setState）を実行します。
+    print("【デバッグ】3. _DataLoadingAndRedirect ウィジェット構築開始！");
+
     ref.listen<AsyncValue<DiscoverFeedState>>(discoverFeedNotifierProvider, (previous, next) {
       // 読み込みが完了し、データが入った初回のみフラグを更新する
       if (!_isInitialLoadComplete && next is AsyncData) {
+        print("【デバッグ】6. Providerからデータ受信！isInitialLoadComplete を true にします。");
         setState(() {
           _isInitialLoadComplete = true;
         });
