@@ -56,8 +56,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   MapType _currentMapType = MapType.normal;
   Timer? _filterDebounceTimer;
   String? _lastQueryHash;
-  bool _isUpdating = false;
-  final Duration _updateThrottle = const Duration(milliseconds: 5000);
+  // bool _isUpdating = false;
+  // final Duration _updateThrottle = const Duration(milliseconds: 5000);
 
   final String _darkMapStyle = '''
   [
@@ -268,6 +268,15 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   }
 
   void _initializePostsStream() {
+    if (mounted) {
+      setState(() {
+        _postsCache.clear();
+        _markers.clear();
+        if (_tappedMarker != null) {
+          _markers.add(_tappedMarker!);
+        }
+      });
+    }
     final queryHash = '${_minSquidSize}_${_selectedDateRange.name}';
     if (_lastQueryHash == queryHash) return;
     _lastQueryHash = queryHash;
@@ -336,28 +345,28 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     }
   }
 
-  void _handlePostsSnapshot(QuerySnapshot snapshot) {
-    if (!mounted || !_iconsLoaded || _isUpdating) return;
-    _isUpdating = true;
-    final changedPosts = <String, Post>{};
-    final deletedPostIds = <String>{};
-    for (final change in snapshot.docChanges) {
-      final post = Post.fromFirestore(change.doc);
-      switch (change.type) {
-        case DocumentChangeType.added:
-        case DocumentChangeType.modified:
-          changedPosts[post.id] = post;
-          break;
-        case DocumentChangeType.removed:
-          deletedPostIds.add(post.id);
-          break;
-      }
+void _handlePostsSnapshot(QuerySnapshot snapshot) {
+  if (!mounted) return;
+
+  final changedPosts = <String, Post>{};
+  final deletedPostIds = <String>{};
+  for (final change in snapshot.docChanges) {
+    final post = Post.fromFirestore(change.doc);
+    switch (change.type) {
+      case DocumentChangeType.added:
+      case DocumentChangeType.modified:
+        changedPosts[post.id] = post;
+        break;
+      case DocumentChangeType.removed:
+        deletedPostIds.add(post.id);
+        break;
     }
-    _postsCache.addAll(changedPosts);
-    deletedPostIds.forEach(_postsCache.remove);
-    _updateMarkersFromCache();
-    Future.delayed(_updateThrottle, () { _isUpdating = false; });
   }
+  _postsCache.addAll(changedPosts);
+  deletedPostIds.forEach(_postsCache.remove);
+
+  _updateMarkersFromCache();
+}
 
   void _updateMarkersFromCache() {
     if (!mounted) return;
@@ -532,7 +541,6 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                   mapToolbarEnabled: false,
                 ),
                 
-                // ▼▼▼ widget.showAppBarAsOverlay を使ってAppBarの表示を制御 ▼▼▼
                 if (widget.showAppBarAsOverlay)
                   Positioned(
                     top: 0,

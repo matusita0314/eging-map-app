@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:typed_data';
 import 'package:geocoding/geocoding.dart';
+import 'package:intl/intl.dart'; 
 
 class AddPostPage extends StatefulWidget {
   final LatLng location;
@@ -24,7 +25,9 @@ class _AddPostPageState extends State<AddPostPage> {
   String? _selectedSquidType;
   double _airTemperature = 15.0;
   double _waterTemperature = 15.0;
+  DateTime? _selectedDateTime;
 
+  final _dateTimeController = TextEditingController();
   final _egiNameController = TextEditingController();
   final _squidSizeController = TextEditingController();
   final _weightController = TextEditingController();
@@ -36,6 +39,7 @@ class _AddPostPageState extends State<AddPostPage> {
 
   @override
   void dispose() {
+    _dateTimeController.dispose();
     _egiNameController.dispose();
     _squidSizeController.dispose();
     _weightController.dispose();
@@ -99,7 +103,7 @@ class _AddPostPageState extends State<AddPostPage> {
         'userId': user.uid,
         'userName': user.displayName ?? '名無しさん',
         'userPhotoUrl': user.photoURL,
-        'createdAt': Timestamp.now(),
+        'createdAt': Timestamp.fromDate(_selectedDateTime!),
         'location': GeoPoint(widget.location.latitude, widget.location.longitude),
         'weather': _selectedWeather,
         'squidSize': double.tryParse(_squidSizeController.text) ?? 0.0,
@@ -215,7 +219,6 @@ class _AddPostPageState extends State<AddPostPage> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                     children: [
-                      // ... (各フォームのCardウィジェット) ...
                       _buildCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,6 +347,25 @@ class _AddPostPageState extends State<AddPostPage> {
                             ),
                             const SizedBox(height: 16),
                             TextFormField(
+                              controller: _dateTimeController,
+                              readOnly: true,
+                              decoration: const InputDecoration(
+                                labelText: '釣った日時 *',
+                                prefixIcon: Icon(Icons.calendar_today_outlined),
+                                hintText: 'タップして日時を選択',
+                              ),
+                              onTap: () {
+                                _selectDateTime(context);
+                              },
+                              validator: (value) {
+                                if (_selectedDateTime == null) {
+                                  return '必須項目です';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
                               controller: _egiNameController,
                               decoration: const InputDecoration(labelText: 'エギ・ルアー名', prefixIcon: Icon(Icons.label_outline)),
                               validator: (value) => value!.isEmpty ? '必須項目です' : null,
@@ -446,7 +468,7 @@ class _AddPostPageState extends State<AddPostPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 80), // ★ フローティングボタンのための余白
+                      const SizedBox(height: 80),
                     ],
                   ),
                 ),
@@ -454,7 +476,6 @@ class _AddPostPageState extends State<AddPostPage> {
             ),
           ),
           
-          // --- フローティング投稿ボタン ---
           Positioned(
             left: 0,
             right: 0,
@@ -464,6 +485,42 @@ class _AddPostPageState extends State<AddPostPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _selectDateTime(BuildContext context) async {
+    // 1. 日付を選択
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      // ピッカーの初期日付は、選択済みの値があればそれ、なければ今日
+      initialDate: _selectedDateTime ?? DateTime.now(),
+      firstDate: DateTime(2015),
+      lastDate: DateTime.now(),
+    );
+
+    if (pickedDate == null) return;
+
+    // 2. 時間を選択
+    if (!context.mounted) return;
+    final TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      // ピッカーの初期時刻は、選択済みの値があればそれ、なければ現在時刻
+      initialTime: TimeOfDay.fromDateTime(_selectedDateTime ?? DateTime.now()),
+    );
+
+    if (pickedTime == null) return;
+
+    // 3. 状態とテキスト入力欄を更新
+    setState(() {
+      _selectedDateTime = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+      // ▼▼▼ 選択された日時を 'yyyy/MM/dd HH:mm' 形式で入力欄にセット ▼▼▼
+      _dateTimeController.text = DateFormat('yyyy/MM/dd HH:mm').format(_selectedDateTime!);
+    });
   }
 
   Widget _buildSubmitButton() {

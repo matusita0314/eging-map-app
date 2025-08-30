@@ -285,7 +285,7 @@ class _ChallengeCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       color: isCompleted ? const Color.fromARGB(255, 223, 255, 226) : Colors.white, // 達成済みは淡いグリーン
       child: Padding(
-        padding: const EdgeInsets.all(20.0), // 全体的にパディングを増やす
+        padding: const EdgeInsets.all(20.0), 
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -296,6 +296,7 @@ class _ChallengeCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     challenge.title,
+                    textAlign: TextAlign.center, // テキスト自体を中央揃えに
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 18, // 少し大きめに
@@ -303,8 +304,9 @@ class _ChallengeCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (isCompleted)
-                  const Icon(Icons.check_circle_rounded, color: Colors.green, size: 36),
+                isCompleted
+                    ? const Icon(Icons.check_circle_rounded, color: Colors.green, size: 36)
+                    : const SizedBox(width: 36),
               ],
             ),
             const SizedBox(height: 12),
