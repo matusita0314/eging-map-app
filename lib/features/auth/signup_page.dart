@@ -63,6 +63,14 @@ class _SignupPageState extends State<SignupPage> {
           },
           'rank': 'beginner',
           'rankForCurrentMonth': 'beginner',
+          'totalCatches': 0,
+          'maxSize': 0,
+          'maxWeight': 0,
+          'followerCount': 0,
+          'followingCount': 0,
+          'totalLikesReceived': 0,
+          'hasCreatedGroup': false,
+          'hasJoinedTournament': false,
         });
       }
       await FirebaseAuth.instance.signOut();

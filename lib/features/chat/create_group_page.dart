@@ -29,7 +29,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
     final groupName = _groupNameController.text.trim();
     final selectedUsers = ref.read(selectedUsersProvider);
     final currentUser = FirebaseAuth.instance.currentUser;
-
+    
     if (groupName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('グループ名を入力してください。')));
       return;
@@ -41,6 +41,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
 
     try {
       final members = [currentUser!.uid, ...selectedUsers];
+      final isGroup = members.length >= 3;
       final unreadCountMap = {for (var memberId in members) memberId: 0};
 
       final newRoomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
@@ -53,6 +54,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
         'lastMessage': 'グループが作成されました',
         'lastMessageAt': FieldValue.serverTimestamp(),
         'unreadCount': unreadCountMap,
+        'isGroupChat': isGroup,
       });
 
       if (mounted) {

@@ -159,8 +159,8 @@ exports.checkAndUpdateRank = onDocumentWritten({
     const newRankInfo = { ...rankInfo, [completedCountField]: newCompletedCount };
 
     const TOTAL_MISSIONS = {
-      beginner: 5,
-      amateur: 10,
+      beginner: 8,
+      amateur: 9,
     };
 
     let newRank = currentRank;
@@ -406,9 +406,6 @@ exports.generateThumbnail = onObjectFinalized({ cpu: 2, region: "asia-northeast1
   }
 });
 
-
-
-
 // =================================================================
 // ▼▼▼ 6. 投稿が削除されたときにユーザーの統計情報を更新する関数 ▼▼▼
 // =================================================================
@@ -417,56 +414,37 @@ exports.updateUserStatsOnPostDelete = onDocumentDeleted({
   region: "asia-northeast1",
 }, async (event) => {
   const deletedPost = event.data.data();
-  if (!deletedPost) {
-    console.log("No data associated with the event.");
-    return null;
-  }
+  if (!deletedPost) return null;
 
   const userId = deletedPost.userId;
   const deletedSize = deletedPost.squidSize || 0;
+  const deletedWeight = deletedPost.weight || 0; // 削除された重さを取得
   const userRef = db.collection("users").doc(userId);
 
   return db.runTransaction(async (transaction) => {
     const userDoc = await transaction.get(userRef);
-    if (!userDoc.exists) {
-      console.log(`User ${userId} not found, cannot update stats.`);
-      return;
-    }
+    if (!userDoc.exists) return;
     
     const userData = userDoc.data();
-    const currentTotalCatches = userData.totalCatches || 0;
-    const currentMaxSize = userData.maxSize || 0;
+    const newTotalCatches = (userData.totalCatches || 1) - 1;
+    let newMaxSize = userData.maxSize || 0;
+    let newMaxWeight = userData.maxWeight || 0;
 
-    // 1. 総釣果数を1減らす
-    const newTotalCatches = currentTotalCatches > 0 ? currentTotalCatches - 1 : 0;
-    let newMaxSize = currentMaxSize;
-
-    // 2. 削除された投稿が最大サイズだった場合のみ、最大サイズを再計算
-    if (deletedSize >= currentMaxSize) {
-      console.log(`Max size post deleted for user ${userId}. Recalculating max size...`);
-      
-      const postsRef = db.collection("posts");
-      const userPostsQuery = postsRef
-        .where("userId", "==", userId)
-        .orderBy("squidSize", "desc")
-        .limit(1);
-        
-      const postsSnapshot = await userPostsQuery.get();
-      
-      if (postsSnapshot.empty) {
-        // 残りの投稿がなければ最大サイズは0
-        newMaxSize = 0;
-      } else {
-        // 残りの投稿の中で一番大きいサイズを新しい最大サイズとする
-        newMaxSize = postsSnapshot.docs[0].data().squidSize || 0;
-      }
-      console.log(`New max size for user ${userId} is ${newMaxSize}.`);
+    // 最大サイズだった場合のみ再計算
+    if (deletedSize >= newMaxSize) {
+      const postsSnap = await db.collection("posts").where("userId", "==", userId).orderBy("squidSize", "desc").limit(1).get();
+      newMaxSize = postsSnap.empty ? 0 : postsSnap.docs[0].data().squidSize || 0;
+    }
+    // 最大重量だった場合のみ再計算
+    if (deletedWeight >= newMaxWeight) {
+      const postsSnap = await db.collection("posts").where("userId", "==", userId).orderBy("weight", "desc").limit(1).get();
+      newMaxWeight = postsSnap.empty ? 0 : postsSnap.docs[0].data().weight || 0;
     }
 
-    // 3. ユーザー情報を更新
     transaction.update(userRef, {
       totalCatches: newTotalCatches,
       maxSize: newMaxSize,
+      maxWeight: newMaxWeight,
     });
   });
 });
@@ -1193,4 +1171,146 @@ exports.updateTournamentStatus = onSchedule({
   }
 
   return null;
+});
+
+// =================================================================
+// 23. いいねの合計数をリアルタイムで集計
+// =================================================================
+exports.incrementTotalLikes = onDocumentCreated({
+  document: "users/{likerId}/liked_posts/{postId}",
+  region: "asia-northeast1",
+}, async (event) => {
+  const postSnap = await db.collection("posts").doc(event.params.postId).get();
+  if (!postSnap.exists) return null;
+  const postAuthorId = postSnap.data().userId;
+  if (!postAuthorId) return null;
+  const authorRef = db.collection("users").doc(postAuthorId);
+  return authorRef.update({ totalLikesReceived: admin.firestore.FieldValue.increment(1) });
+});
+
+exports.decrementTotalLikes = onDocumentDeleted({
+  document: "users/{likerId}/liked_posts/{postId}",
+  region: "asia-northeast1",
+}, async (event) => {
+  const postSnap = await db.collection("posts").doc(event.params.postId).get();
+  if (!postSnap.exists) return null;
+  const postAuthorId = postSnap.data().userId;
+  if (!postAuthorId) return null;
+  const authorRef = db.collection("users").doc(postAuthorId);
+  return authorRef.update({ totalLikesReceived: admin.firestore.FieldValue.increment(-1) });
+});
+
+
+// =================================================================
+// 24. グループチャット作成を検知してフラグを更新
+// =================================================================
+exports.setHasCreatedGroupFlag = onDocumentCreated({
+  document: "chat_rooms/{chatRoomId}",
+  region: "asia-northeast1",
+}, async (event) => {
+  const chatRoomData = event.data.data();
+  // isGroupChatがtrueでなければ処理を終了
+  if (!chatRoomData.isGroupChat) return null;
+  const userIds = chatRoomData.userIds;
+  if (!userIds || userIds.length === 0) return null;
+
+  const batch = db.batch();
+  userIds.forEach(userId => {
+    const userRef = db.collection("users").doc(userId);
+    batch.update(userRef, { hasCreatedGroup: true });
+  });
+  return batch.commit();
+});
+
+
+// =================================================================
+// 25. 定期実行でフォロー数や大会参加状況を集計
+// =================================================================
+exports.updateUserAggregates = onSchedule({
+    schedule: "0 0,5,7,9,11,13,15,17,19,21,23 * * *",
+    timeZone: "Asia/Tokyo",
+    region: "asia-northeast1",
+    memory: "1GiB",
+}, async (event) => {
+    const usersRef = db.collection("users");
+    const allUsersSnap = await usersRef.get();
+    if (allUsersSnap.empty) return null;
+
+    const promises = allUsersSnap.docs.map(async (userDoc) => {
+        const userId = userDoc.id;
+        const userUpdateData = {};
+        // フォロワー数とフォロー数を集計
+        const followersSnap = await userDoc.ref.collection("followers").get();
+        userUpdateData.followerCount = followersSnap.size;
+        const followingSnap = await userDoc.ref.collection("following").get();
+        userUpdateData.followingCount = followingSnap.size;
+        // 大会に参加したか判定
+        const tournamentsSnap = await db.collectionGroup("entries").where("userId", "==", userId).limit(1).get();
+        userUpdateData.hasJoinedTournament = !tournamentsSnap.empty;
+        
+        return userDoc.ref.update(userUpdateData);
+    });
+    await Promise.all(promises);
+    console.log(`Updated aggregates for ${allUsersSnap.size} users.`);
+});
+
+// =================================================================
+// ▼▼▼ 26.プロランク全達成時に称号を付与する関数 ▼▼▼
+// =================================================================
+exports.awardProRankTitleOnCompletion = onDocumentWritten({
+  document: "users/{userId}/completed_challenges/{challengeId}",
+  region: "asia-northeast1",
+}, async (event) => {
+    const userId = event.params.userId;
+    const challengeId = event.params.challengeId;
+
+    // 1. 今回達成されたチャレンジがプロランクのものか確認
+    const challengeSnap = await db.collection("challenges").doc(challengeId).get();
+    if (!challengeSnap.exists || challengeSnap.data().rank !== "プロ") {
+        console.log(`Challenge ${challengeId} is not a Pro rank mission. No title check needed.`);
+        return null;
+    }
+
+    // 2. 称号をすでに持っているか確認
+    const titleName = "すべてのミッションをクリアした覇者";
+    const awardedTitlesRef = db.collection("users").doc(userId).collection("awardedTitles");
+    const existingTitleQuery = await awardedTitlesRef.where("title", "==", titleName).limit(1).get();
+    if (!existingTitleQuery.empty) {
+        console.log(`User ${userId} already has the '${titleName}' title.`);
+        return null;
+    }
+
+    // 3. プロランクのミッション総数を定義 (ご提示いただいたミッション数)
+    const TOTAL_PRO_MISSIONS = 7;
+
+    // 4. ユーザーがクリアした全チャレンジを取得
+    const userCompletedChallengesSnap = await db.collection("users").doc(userId).collection("completed_challenges").get();
+    
+    // 5. クリア済みのうち、プロランクのものがいくつあるか数える
+    let proMissionCount = 0;
+    // 並行で各チャレンジのデータを取得
+    const challengePromises = userCompletedChallengesSnap.docs.map(doc => 
+        db.collection("challenges").doc(doc.id).get()
+    );
+    const challengeDocs = await Promise.all(challengePromises);
+
+    challengeDocs.forEach(doc => {
+        if (doc.exists && doc.data().rank === "プロ") {
+            proMissionCount++;
+        }
+    });
+
+    console.log(`User ${userId} has completed ${proMissionCount}/${TOTAL_PRO_MISSIONS} Pro missions.`);
+
+    // 6. 全てクリアしていれば称号を付与
+    if (proMissionCount >= TOTAL_PRO_MISSIONS) {
+        console.log(`Awarding '${titleName}' title to user ${userId}!`);
+        await awardedTitlesRef.add({
+            title: titleName,
+            awardedAt: admin.firestore.FieldValue.serverTimestamp(),
+            reason: "全てのプロランクミッションを達成",
+        });
+    }
+
+    return null;
 });
