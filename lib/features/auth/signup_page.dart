@@ -169,8 +169,10 @@ class _SignupPageState extends State<SignupPage> {
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _usernameController,
+                          maxLength: 7, 
                           decoration: InputDecoration(
-                            hintText: 'アプリ内で表示される名前',
+                            hintText: 'アプリ内で表示される名前(7文字以内)',
+                            counterText: "", 
                             prefixIcon: const Icon(Icons.person_outline),
                             filled: true,
                             fillColor: Colors.grey.shade100,

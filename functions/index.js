@@ -159,8 +159,8 @@ exports.checkAndUpdateRank = onDocumentWritten({
     const newRankInfo = { ...rankInfo, [completedCountField]: newCompletedCount };
 
     const TOTAL_MISSIONS = {
-      beginner: 8,
-      amateur: 9,
+      beginner: 7,
+      amateur: 8,
     };
 
     let newRank = currentRank;

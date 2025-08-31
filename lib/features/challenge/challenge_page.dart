@@ -16,8 +16,12 @@ class ChallengePage extends StatefulWidget {
 class _ChallengePageState extends State<ChallengePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  // ▼▼▼ DBの日本語化に合わせて、このリストのみを使用します ▼▼▼
-  final List<String> _ranks = ['ビギナー', 'アマチュア', 'プロ'];
+  final List<String> _ranks = ['beginner', 'amateur', 'pro'];
+  final Map<String, String> _rankDisplayNames = {
+      'beginner': 'ビギナー',
+      'amateur': 'アマチュア',
+      'pro': 'プロ',
+    };
 
   @override
   void initState() {
@@ -126,7 +130,11 @@ class _ChallengePageState extends State<ChallengePage>
                             fontWeight: FontWeight.w500,
                             fontSize: 14,
                           ),
-                          tabs: _ranks.map((rank) => Tab(text: rank.toUpperCase())).toList(),
+                          tabs: _ranks
+                          .map((rank) => Tab(
+                                text: (_rankDisplayNames[rank] ?? rank).toUpperCase(),
+                              ))
+                          .toList(),
                         ),
                       ),
                     ),
@@ -146,7 +154,6 @@ class _ChallengePageState extends State<ChallengePage>
   }
 }
 
-// _StickyTabBarDelegate (変更なし)
 class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
   _StickyTabBarDelegate({required this.child});

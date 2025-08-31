@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'package:auto_size_text/auto_size_text.dart';
 import '../features/account/account.dart';
 import '../features/post/post_detail_page.dart';
 import '../models/post_model.dart';
@@ -78,14 +79,20 @@ class PostFeedCard extends ConsumerWidget {
                                   : null,
                             ),
                             const SizedBox(width: 8),
-                            Text(realTimePost.userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            AutoSizeText(
+                              realTimePost.userName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              maxLines: 1,       // 1行で表示
+                              minFontSize: 8,   // 最小フォントサイズ
+                              overflow: TextOverflow.ellipsis, // はみ出た場合は...で表示
+                            ),
                           ],
                         ),
                       ),
                       const Spacer(),
                       _buildHeaderInfo(Icons.location_on, realTimePost.region ?? '不明'),
-                      const SizedBox(width: 20),
-                      _buildHeaderInfo(Icons.schedule, DateFormat('yyyy年M月d日').format(realTimePost.createdAt)),
+                      const SizedBox(width: 4),
+                      _buildHeaderInfo(Icons.schedule, DateFormat('yyyy/M/d').format(realTimePost.createdAt)),
                     ],
                   ),
                 ),

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:auto_size_text/auto_size_text.dart';
 
 import '../../widgets/post_feed_card.dart';
 import '../../models/sort_by.dart';
@@ -49,6 +50,7 @@ class _MyPageState extends ConsumerState<MyPage> {
   late int _currentYear;
   int? _touchedIndex;
   bool _isChartExpanded = false; 
+  bool _isIntroductionExpanded = false;
 
   @override
   void initState() {
@@ -255,6 +257,46 @@ class _MyPageState extends ConsumerState<MyPage> {
     final followingCount = ref.watch(followingCountProvider(widget.userId)).value ?? 0;
     final savedPostsCount = ref.watch(savedPostsCountProvider(widget.userId)).value ?? 0;
 
+    const int introductionMaxLines = 2;
+    const int introductionTriggerLength = 30; // この文字数を超えたら「もっと見る」を表示
+
+    Widget buildIntroduction() {
+      // タップで状態を切り替えるためのテキストウィジェット
+      Widget buildToggleText(String text) {
+        return GestureDetector(
+          onTap: () {
+            setState(() {
+              _isIntroductionExpanded = !_isIntroductionExpanded;
+            });
+          },
+          child: Text(
+            text,
+            style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+          ),
+        );
+      }
+
+      // 自己紹介文が短い場合は、そのまま表示
+      if (introduction.length < introductionTriggerLength) {
+        return Text(introduction, style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.black54));
+      }
+
+      // 長い場合は、開閉状態に応じて表示を切り替え
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            introduction,
+            style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.black54),
+            maxLines: _isIntroductionExpanded ? null : introductionMaxLines,
+            overflow: _isIntroductionExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          buildToggleText(_isIntroductionExpanded ? '閉じる' : '...もっと見る'),
+        ],
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(15),
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -270,7 +312,11 @@ class _MyPageState extends ConsumerState<MyPage> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              RankedCircleAvatar(photoUrl: photoUrl, rank: rank, radius: 35),
+              CircleAvatar(
+              radius: 35,
+              backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+              child: photoUrl.isEmpty ? const Icon(Icons.person, size: 35) : null,
+            ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -279,7 +325,14 @@ class _MyPageState extends ConsumerState<MyPage> {
                     // ユーザー名とランクバッジ
                     Row(
                       children: [
-                        Flexible(child: Text(displayName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+                        Flexible(
+                          child: AutoSizeText(
+                            displayName,
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            minFontSize: 10,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         _buildRankBadge(rank),
                         IconButton(
@@ -303,15 +356,14 @@ class _MyPageState extends ConsumerState<MyPage> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    // ひとこと（自己紹介）
-                    Text(introduction, style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.black54), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    buildIntroduction(),
                   ],
                 ),
               ),
             ],
           ),
 
-          const Divider(height: 16),
+          const Divider(height: 24),
           
           // --- 中段：統計情報 ---
           Row(
@@ -367,24 +419,26 @@ class _MyPageState extends ConsumerState<MyPage> {
   }
 
     Widget _buildHighlightItem(IconData icon, String label, String value, Color color) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, color: color, size: 28),
-        const SizedBox(height: 8),
-        // 文字色を黒系に変更
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-        const SizedBox(height: 4),
-        // 文字色をグレー系に変更
-        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-      ],
-    );
-  }
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(height: 8),
+          // 文字色を黒系に変更
+          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+          const SizedBox(height: 4),
+          // 文字色をグレー系に変更
+          Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+        ],
+      );
+    }
+
   
   Widget _buildAchievementsAndHighlightsCard(BuildContext context, WidgetRef ref, DocumentSnapshot userDoc) {
   final userData = userDoc.data() as Map<String, dynamic>? ?? {};
   final totalCatches = userData['totalCatches']?.toString() ?? '0';
   final maxSize = userData['maxSize']?.toStringAsFixed(1) ?? '0.0';
+  final totalLikesReceived = userData['totalLikesReceived']?.toString() ?? '0';
   final titlesAsync = ref.watch(awardedTitlesProvider(widget.userId));
 
   return Padding(
@@ -392,18 +446,15 @@ class _MyPageState extends ConsumerState<MyPage> {
     child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        // 背景を白系のグラデーションに変更
         gradient: LinearGradient(
           colors: [Colors.white, Colors.grey.shade50],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        // 縁取りはゴールドのまま
-        border: Border.all(color: Colors.amber.withOpacity(0.5), width: 1.5),
+        border: Border.all(color: const Color(0xFF80d0c7).withOpacity(0.8), width: 1.5),
         boxShadow: [
           BoxShadow(
-            // 影を薄く調整
             color: Colors.black.withOpacity(0.1),
             blurRadius: 15,
             offset: const Offset(0, 5),
@@ -427,18 +478,17 @@ class _MyPageState extends ConsumerState<MyPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1), // 背景色を調整
+                    color: Colors.grey.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                    border: Border.all(color: const Color(0xFF80d0c7).withOpacity(0.6)),
                   ),
                   child: Column(
                     children: [
-                      const Icon(Icons.emoji_events_outlined, color: Colors.amber, size: 28),
+                      Icon(Icons.emoji_events_outlined, color: const Color(0xFF13547a).withOpacity(0.8), size: 28),
                       const SizedBox(height: 8),
                       Text(
                         '大会で入賞して称号をゲットしよう！',
                         textAlign: TextAlign.center,
-                        // 文字色を調整
                         style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -446,54 +496,70 @@ class _MyPageState extends ConsumerState<MyPage> {
                 )
               else
                 Wrap(
-                  spacing: 12.0,
-                  runSpacing: 12.0,
+                  spacing: 10.0,
+                  runSpacing: 10.0,
                   children: titles.docs.map((doc) {
                     final titleData = doc.data() as Map<String, dynamic>;
                     final titleText = titleData['title'] ?? '';
                     final isGold = titleText.contains('優勝');
+                    
+                    final gradientColors = isGold
+                        ? [const Color(0xFFf7d521), const Color(0xFFb4880b)]
+                        : [const Color(0xFF13547a), const Color(0xFF2e8a9d)];
+
+                    final textColor = isGold ? const Color.fromARGB(255, 83, 58, 0) : Colors.white;
+
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: isGold
-                              ? [Colors.amber.shade300, Colors.amber.shade600]
-                              : [Colors.white, Colors.grey.shade200], // 優勝以外は白〜グレー系
-                          begin: Alignment.topLeft, end: Alignment.bottomRight,
+                          colors: gradientColors,
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(30),
                         boxShadow: [
                           BoxShadow(
-                            color: isGold ? Colors.amber.withOpacity(0.4) : Colors.black.withOpacity(0.1),
-                            blurRadius: 6, offset: const Offset(0, 3),
+                            color: isGold ? Colors.amber.withOpacity(0.5) : const Color(0xFF13547a).withOpacity(0.4),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
                           )
                         ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.emoji_events, color: isGold ? Colors.white : const Color(0xFF13547a), size: 16),
+                          Icon(Icons.emoji_events, color: textColor.withOpacity(0.9), size: 16),
                           const SizedBox(width: 8),
-                          Flexible(child: Text(titleText, style: TextStyle(color: isGold ? Colors.white : const Color(0xFF13547a), fontWeight: FontWeight.bold))),
+                          Flexible(
+                            child: Text(
+                              titleText,
+                              style: TextStyle(
+                                color: textColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     );
                   }).toList(),
                 ),
 
-              // === 区切り線 ===
               Divider(color: Colors.grey.shade200, height: 32),
 
-              // === ハイライトエリア ===
               IntrinsicHeight(
+                // ... (以降のハイライトエリアは変更なし)
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildHighlightItem(Icons.military_tech, '大会優勝', '$winCount 回', Colors.amber),
+                    _buildHighlightItem(Icons.military_tech, '大会優勝', '$winCount 回', Colors.amber.shade700),
                     VerticalDivider(color: Colors.grey.shade200, thickness: 1, indent: 8, endIndent: 8),
                     _buildHighlightItem(Icons.straighten, '最大サイズ', '$maxSize cm', Colors.lightBlue),
                     VerticalDivider(color: Colors.grey.shade200, thickness: 1, indent: 8, endIndent: 8),
-                    _buildHighlightItem(Icons.phishing, '総釣果数', '$totalCatches 杯', Colors.lightGreen),
+                    _buildHighlightItem(Icons.phishing, '総釣果数', '$totalCatches 杯', Colors.lightGreen.shade600),
+                    VerticalDivider(color: Colors.grey.shade200, thickness: 1, indent: 8, endIndent: 8),
+                    _buildHighlightItem(Icons.favorite, '総いいね', totalLikesReceived, Colors.pinkAccent),
                   ],
                 ),
               ),
@@ -507,33 +573,37 @@ class _MyPageState extends ConsumerState<MyPage> {
   );
 }
 
+
+
   Widget _buildStatColumn(String label, String count, [VoidCallback? onTap]) {
-  return GestureDetector(
-    onTap: onTap,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          count,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            count,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF13547a),
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-            fontWeight: FontWeight.bold,
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF13547a),
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildChartSection(Map<int, int> data) {
     final bool hasDataForYear = data.values.any((v) => v > 0);
@@ -816,38 +886,67 @@ class _MyPageState extends ConsumerState<MyPage> {
   }
 
   Widget _buildRankBadge(String rank) {
-    Color badgeColor;
-    String badgeText;
-    switch (rank) {
-      case 'amateur':
-        badgeColor = const Color.fromARGB(255, 210, 84, 25);
-        badgeText = 'アマチュア';
-        break;
-      case 'pro':
-        badgeColor = const Color.fromARGB(255, 255, 60, 60);
-        badgeText = 'プロ';
-        break;
-      default:
-        badgeColor = const Color.fromARGB(255, 0, 163, 19);
-        badgeText = 'ビギナー';
-    }
+    // ランクに応じた設定を定義
+    final Map<String, dynamic> rankConfig = {
+      'pro': {
+        'text': 'プロ',
+        'icon': Icons.star,
+        'gradient': [const Color(0xFFF37335), const Color(0xFFFDC830)],
+      },
+      'amateur': {
+        'text': 'アマチュア',
+        'icon': Icons.shield,
+        'gradient': [const Color(0xFF42A5F5), const Color(0xFF1976D2)],
+      },
+      'beginner': {
+        'text': 'ビギナー',
+        'icon': Icons.park,
+        'gradient': [const Color(0xFF66BB6A), const Color(0xFF388E3C)],
+      },
+    };
+
+    // rankが存在しない場合のデフォルト値を設定
+    final config = rankConfig[rank] ?? rankConfig['beginner']!;
+    final badgeText = config['text'];
+    final badgeIcon = config['icon'];
+    final badgeGradient = config['gradient'];
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: badgeColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        badgeText,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
+        gradient: LinearGradient(
+          colors: badgeGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(badgeIcon, color: Colors.white, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            badgeText,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              letterSpacing: 0.5, // 文字間を少し広げる
+            ),
+          ),
+        ],
       ),
     );
   }
+
 }
 
 class SortHeader extends ConsumerWidget {

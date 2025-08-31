@@ -499,11 +499,9 @@ class _AddPostPageState extends State<AddPostPage> {
 
     if (pickedDate == null) return;
 
-    // 2. 時間を選択
     if (!context.mounted) return;
     final TimeOfDay? pickedTime = await showTimePicker(
       context: context,
-      // ピッカーの初期時刻は、選択済みの値があればそれ、なければ現在時刻
       initialTime: TimeOfDay.fromDateTime(_selectedDateTime ?? DateTime.now()),
     );
 
